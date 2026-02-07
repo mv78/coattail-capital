@@ -8,7 +8,7 @@ Real-time whale tracking and alpha scoring platform built with PySpark Structure
 
 **Contributors:**
 - Mike Veksler — Principal Architect, PySpark Lead (GitHub: mveksler)
-- Frank D'Avanzo — Engineering Manager, BMAD Coach (GitHub: TheFrankBuilder)
+- Frank D'Avanzo — Head of Agentic AI & Strategic Fly-Bys, BMAD-Method Coach (GitHub: TheFrankBuilder)
 
 ## Tech Stack
 

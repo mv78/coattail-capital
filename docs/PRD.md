@@ -7,7 +7,7 @@
 | **Project** | Coat Tail Capital (CTC) |
 | **Tagline** | Riding smart money so you don't have to think 🐋 |
 | **Version** | 1.0 |
-| **Authors** | Mike Veksler (Principal Architect), Frank D'Avanzo (Engineering Manager / BMAD Coach) |
+| **Authors** | Mike Veksler (Principal Architect), Frank D'Avanzo (Head of Agentic AI & Strategic Fly-Bys, BMAD-Method Coach) |
 | **Method** | BMAD Agentic Spec-Driven Development |
 | **Target Completion** | Weekend Sprint (2 sessions × 6-8 hours) |
 | **Repository** | github.com/mveksler/coattail-capital |

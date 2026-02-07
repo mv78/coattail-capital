@@ -4,11 +4,16 @@
 
 ## Overview
 
-This directory contains the agent prompt specifications used in the BMAD (Business-Manager-Architect-Developer) agentic development method. Each agent is a specialized Claude Code persona that produces specific artifacts consumed by downstream agents.
+This directory contains the agent prompt specifications used in the [BMAD (Breakthrough Method for Agile AI Driven Development)](https://github.com/bmad-code-org/BMAD-METHOD) method. Each agent is a specialized Claude Code persona that produces specific artifacts consumed by downstream agents.
 
 ### Workflow Chain
 
 ```
+                              BMAD Expert Agent
+                          (Reviews & Coaches All Phases)
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼
 BA Agent → Architect Agent → Data Engineer Agent → DevOps Agent → Security Agent → QA Agent
    │              │                  │                  │               │              │
    ▼              ▼                  ▼                  ▼               ▼              ▼
@@ -34,8 +39,9 @@ Alternatively, chain them in a single session by feeding outputs as inputs to th
 ## Agent Specifications
 
 See individual files:
+- `bmad-expert-agent.md` — BMAD-Method Expert (process reviewer & coach)
 - `ba-agent.md` — Business Analyst
-- `architect-agent.md` — Solutions Architect  
+- `architect-agent.md` — Solutions Architect
 - `data-engineer-agent.md` — Data Engineer
 - `security-agent.md` — Security Engineer
 - `devops-agent.md` — DevOps Engineer
