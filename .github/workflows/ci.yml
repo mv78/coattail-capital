@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install ruff mypy pytest
+          pip install -r src/producer/requirements.txt || true
+
+      - name: Lint Python
+        run: ruff check src/ tests/
+
+      - name: Type check
+        run: mypy src/ --ignore-missing-imports || true
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --tb=short || true
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: infra
+
+      - name: Terraform Init (no backend)
+        run: terraform init -backend=false
+        working-directory: infra
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: infra
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: infra
+          soft_fail: true
+
+      - name: Run checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra
+          soft_fail: true

@@ -1,0 +1,18 @@
+# Copy this to terraform.tfvars and customize
+
+aws_region  = "us-west-2"
+environment = "dev"
+
+# Cost controls
+emr_max_vcpu               = 4
+emr_max_memory_gb          = "8 GB"
+emr_auto_stop_idle_minutes = 15
+billing_alarm_threshold_usd = 25
+
+# Notifications (set your email)
+alarm_email = ""
+
+# Data retention
+s3_transition_to_ia_days = 30
+s3_expiration_days       = 90
+dynamodb_ttl_hours       = 24
