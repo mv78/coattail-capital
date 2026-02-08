@@ -26,8 +26,8 @@ Real-time whale tracking and alpha scoring platform built with PySpark Structure
 coattail-capital/
 ├── docs/                      # Documentation
 │   ├── PRD.md                 # Product requirements (START HERE)
-│   ├── ARCHITECTURE.md        # System design (generate this)
-│   ├── WELL-ARCHITECTED.md    # AWS WAF analysis (generate this)
+│   ├── ARCHITECTURE.md        # System design
+│   ├── WELL-ARCHITECTED.md    # AWS WAF analysis
 │   ├── ADR.md                 # Architecture decision records
 │   └── RUNBOOK.md             # Weekend execution guide
 ├── agents/                    # BMAD agent prompts
@@ -69,7 +69,7 @@ coattail-capital/
 
 ### Using BMAD Agents
 
-This project uses BMAD (Business-Manager-Architect-Developer) method. Each agent in `agents/` is a specialized prompt. To use an agent:
+This project uses [BMAD (Breakthrough Method for Agile AI Driven Development)](https://github.com/bmad-code-org/BMAD-METHOD). Each agent in `agents/` is a specialized prompt. To use an agent:
 
 ```bash
 # Load an agent's context and give it a task
@@ -98,7 +98,9 @@ pytest tests/ -v
 
 ### ✅ Completed (Specs & Infrastructure)
 - PRD with data quality, batch processing sections
-- 6 BMAD agent specifications
+- 7 BMAD agent specifications (including BMAD Expert Agent)
+- Architecture document with Mermaid diagrams
+- Well-Architected Framework review (6 pillars)
 - 9 Terraform modules (Kinesis, S3, EMR, Glue, IAM, Monitoring, Step Functions, Lake Formation)
 - 6 Architecture Decision Records
 - Weekend runbook
@@ -208,7 +210,7 @@ terraform destroy
 ## Links
 
 - **PRD:** `docs/PRD.md`
-- **Architecture:** `docs/ARCHITECTURE.md` (to be generated)
+- **Architecture:** `docs/ARCHITECTURE.md`
 - **Runbook:** `docs/RUNBOOK.md`
 - **Mike's LinkedIn:** https://www.linkedin.com/in/mikeveksler-798b7913
 - **Frank's GitHub:** https://github.com/TheFrankBuilder

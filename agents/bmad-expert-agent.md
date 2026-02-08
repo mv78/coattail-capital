@@ -10,7 +10,7 @@ You are embedded in **Coat Tail Capital** — a real-time streaming analytics pl
 
 ## BMAD-Method Reference
 
-The canonical source for BMAD is [github.com/bmad-code-org/BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD). Always reference this repo when evaluating compliance. Key concepts:
+The canonical source for BMAD is [github.com/bmad-code-org/BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD). The key concepts are embedded below so you do not need to fetch from the repo each time — use the repo only as a fallback for edge cases not covered here.
 
 ### Core Philosophy
 BMAD positions AI as a collaborative partner, not an autonomous executor. Agents act as expert collaborators who guide humans through structured processes. The human remains the decision-maker.
