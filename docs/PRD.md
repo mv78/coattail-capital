@@ -87,68 +87,142 @@ Simultaneously, AWS practitioners need portfolio projects that demonstrate real-
 
 ---
 
-## 5. Scope
+## 4A. Module System
 
-### 5.1 In Scope (Weekend MVP)
+Coat Tail Capital uses a **composable feature module architecture** (ADR-007) instead of rigid scope phases. This enables:
 
-- **Data Ingestion:** Python WebSocket producer → Kinesis Data Streams for BTC/ETH/SOL pairs from Binance public API
-- **Stream Processing:** PySpark Structured Streaming on EMR Serverless
-  - 60-second tumbling window volume aggregation
-  - Z-score anomaly detection (volume spikes)
-  - Whale trade detection (threshold-based)
-  - Cross-exchange spread calculation (Binance vs. Coinbase)
-- **Storage:** S3 Iceberg tables via Glue Data Catalog (partitioned by date/symbol)
-- **Hot Alerts:** DynamoDB table for recent anomalies (<24h)
-- **API:** Lambda + API Gateway — GET /alerts, GET /metrics/{symbol}
-- **Dashboard:** Single-page React app showing live alerts, volume charts, spread tracker
-- **IaC:** Terraform modules for all infrastructure
-- **CI/CD:** GitHub Actions for lint, test, deploy
-- **Documentation:** Architecture diagram, WAF review, README, runbook
+- **Independent feature lifecycle** — modules can be enabled/disabled without touching other code
+- **Right-sized cost** — pay only for the detection capabilities you need
+- **Easy extensibility** — adding a feature = new module + config entry, not a rewrite
 
-### 5.2 Principal-Level Additions (Weekend MVP Extended)
+### Module Contract
 
-These additions elevate the project from Senior Engineer to Principal Architect demonstration:
+Every feature module conforms to a standard interface defined in `docs/MODULE_REGISTRY.md`:
 
-- **Data Quality Framework:** PySpark-native validation with CloudWatch metrics, DLQ routing, quality dashboards
-- **Batch Reprocessing:** Historical backfill from exchange REST APIs, Iceberg time-travel reprocessing
-- **Orchestration:** Step Functions state machine for batch workflows, EventBridge scheduling
-- **Schema Evolution:** Demonstrate Iceberg schema evolution (add field without rewrite)
-- **Data Governance:** Lake Formation basic setup with database-level permissions
-- **Architecture Decision Records:** Document Kinesis vs MSK tradeoff
+| Component | Description |
+|---|---|
+| **BaseConnector** | Data source abstraction (exchange WebSocket, blockchain RPC) |
+| **BaseDetector** | Processing logic (windowed aggregation, threshold detection, scoring) |
+| **AlertRouter** | Routes detector output to DynamoDB + S3 Iceberg sinks |
+| **ModuleRegistry** | Discovers and instantiates active modules from configuration |
+| **ConfigLoader** | Reads `config/features.yaml` + SSM parameters for runtime config |
+| **PipelineRunner** | Orchestrates connectors → quality checks → detectors → sinks |
 
-### 5.3 Out of Scope (Future Enhancements)
+### Configuration
 
-- ML-based anomaly models (SageMaker integration)
-- Multi-region deployment
-- User authentication / multi-tenancy
-- Mobile app
-- Automated trading signals / financial advice (AI safety boundary)
+Modules are activated via YAML configuration (version-controlled) and SSM parameters (runtime):
+
+```yaml
+# config/features.yaml
+feature_tier: small
+symbols: [btcusdt, ethusdt, solusdt]
+exchange_connectors: [binance-ws, coinbase-ws]
+```
+
+Tier definitions in `config/tiers/` map tier names to active module sets. Individual modules can be toggled via `enabled_modules` overrides in Terraform.
+
+### Module Registry
+
+All 11 modules are cataloged in `docs/MODULE_REGISTRY.md` with complete specs: data sources, dependencies, processing algorithms, output tables, alert types, and cost impact.
 
 ---
 
-## 6. Data Sources
+## 5. Scope — Feature Tiers
 
-### 6.1 Binance WebSocket Streams (Primary)
+Coat Tail Capital uses a **modular feature architecture** where capabilities are composed from independent feature modules. Each tier is a superset of the previous, enabling right-sized deployments. See `docs/MODULE_REGISTRY.md` for complete module specifications.
 
-| Stream | Endpoint | Data |
-|---|---|---|
-| Trade stream | `wss://stream.binance.com:9443/ws/{symbol}@trade` | Price, quantity, timestamp, buyer/seller |
-| Aggregated trade | `wss://stream.binance.com:9443/ws/{symbol}@aggTrade` | Aggregated trades per price level |
-| Mini ticker | `wss://stream.binance.com:9443/ws/{symbol}@miniTicker` | 24h rolling stats |
+### 5.1 Small Tier — Detect CEX Activity (~$0.82/hr)
 
-**Symbols:** btcusdt, ethusdt, solusdt (extensible)
+The foundation: ingest CEX trade data, detect anomalies, and surface alerts.
 
-**Rate Limits:** No API key required for public streams. Max 5 WebSocket connections per IP. Combined stream endpoint available for multiplexing.
+| Component | Description |
+|---|---|
+| **Data Ingestion** | Python WebSocket producer → Kinesis Data Streams for configurable symbol pairs |
+| **Modules** | `volume-anomaly` (MOD-001), `whale-detector` (MOD-002), `spread-calculator` (MOD-003) |
+| **Storage** | S3 Iceberg tables via Glue Data Catalog, DynamoDB hot alerts (24h TTL) |
+| **API** | Lambda + API Gateway — GET /alerts, GET /metrics/{symbol} |
+| **Dashboard** | Single-page React app — live alerts, volume charts, spread tracker |
+| **Platform** | Data quality framework, Terraform IaC, GitHub Actions CI/CD, Step Functions batch orchestration |
 
-### 6.2 Coinbase WebSocket (Secondary — for spread calculation)
+### 5.2 Medium Tier — Track Who Smart Money IS (~$1.40/hr)
 
-| Stream | Endpoint | Data |
-|---|---|---|
-| Matches | `wss://ws-feed.exchange.coinbase.com` | Executed trades with price, size, side |
+Extends Small with identity and conviction analysis.
 
-**Auth:** None required for public channels.
+| Component | Description |
+|---|---|
+| **Includes** | All Small tier modules and infrastructure |
+| **Modules** | `wallet-scorer` (MOD-004), `labeled-whales` (MOD-005), `flow-direction` (MOD-006), `consensus` (MOD-007) |
+| **New Capabilities** | Wallet alpha scoring, known whale identity enrichment, buy/sell flow analysis, multi-signal consensus scoring |
 
-### 6.3 Data Schema — Unified Trade Event
+### 5.3 Large Tier — Predict Where It's Going (~$2.50/hr)
+
+Full platform with on-chain data and predictive analytics.
+
+| Component | Description |
+|---|---|
+| **Includes** | All Medium tier modules and infrastructure |
+| **Modules** | `onchain-ingester` (MOD-008), `dex-tracker` (MOD-009), `predictive-scorer` (MOD-010), `backtester` (MOD-011) |
+| **New Capabilities** | Ethereum/Solana on-chain ingestion, DEX trade tracking, forward-looking probability scores, signal back-testing |
+
+### 5.4 Out of Scope
+
+- ML-based anomaly models (SageMaker integration) — potential future module
+- Multi-region deployment
+- User authentication / multi-tenancy
+- Mobile app
+- Automated trading execution / financial advice (AI safety boundary)
+
+### 5.5 Principal-Level Platform Capabilities (All Tiers)
+
+These cross-cutting capabilities ship with every tier:
+
+- **Modular feature architecture** with config-driven module toggles (ADR-007)
+- **Data quality framework** — PySpark-native validation, CloudWatch metrics, DLQ routing
+- **Batch reprocessing** — historical backfill, Iceberg time-travel reprocessing
+- **Orchestration** — Step Functions state machine, EventBridge scheduling
+- **Schema evolution** — Iceberg schema evolution without table rewrites
+- **Data governance** — Lake Formation with database-level permissions
+- **Architecture decision records** — documented trade-offs (ADR-001 through ADR-007)
+
+---
+
+## 6. Data Sources — Connector Interface
+
+Data ingestion uses a **BaseConnector** pattern. Each exchange or blockchain is a connector implementation that normalizes raw data into a unified schema. Connectors are enabled via configuration (`config/features.yaml`).
+
+### 6.1 Connector Contract
+
+Every data source connector implements:
+
+```python
+class BaseConnector(ABC):
+    def connect(self) -> None: ...          # Establish connection
+    def normalize(self, raw) -> TradeEvent: ... # Normalize to unified schema
+    def health_check(self) -> bool: ...     # Connection health
+    def shutdown(self) -> None: ...         # Graceful disconnect
+```
+
+### 6.2 CEX Connectors (Small Tier)
+
+| Connector | Endpoint | Data | Auth |
+|---|---|---|---|
+| `binance-ws` | `wss://stream.binance.com:9443/ws/{symbol}@trade` | Price, quantity, timestamp, buyer/seller | None (public) |
+| `coinbase-ws` | `wss://ws-feed.exchange.coinbase.com` | Executed trades with price, size, side | None (public) |
+
+**Symbols:** Configurable via `config/features.yaml` (default: `btcusdt, ethusdt, solusdt`)
+
+**Rate Limits:** Binance: max 5 WebSocket connections per IP (use combined stream endpoint). Coinbase: no stated limit for public channels.
+
+### 6.3 Blockchain Connectors (Large Tier)
+
+| Connector | Endpoint | Data | Auth |
+|---|---|---|---|
+| `ethereum-rpc` | Alchemy/Infura WebSocket | Blocks, transactions, token transfers | API key |
+| `solana-rpc` | Helius/QuickNode WebSocket | Transactions, program logs | API key |
+
+### 6.4 Unified Trade Event Schema
+
+All CEX connectors normalize to this schema:
 
 ```json
 {
@@ -163,6 +237,14 @@ These additions elevate the project from Senior Engineer to Principal Architect 
   "ingestion_timestamp": "2025-02-05T10:30:00.456Z"
 }
 ```
+
+### 6.5 Adding a New Connector
+
+1. Subclass `BaseConnector`
+2. Implement `connect()`, `normalize()`, `health_check()`, `shutdown()`
+3. Register in `src/connectors/` directory
+4. Add to connector list in `config/features.yaml`
+5. The producer auto-discovers and starts registered connectors
 
 ---
 
@@ -217,44 +299,71 @@ These additions elevate the project from Senior Engineer to Principal Architect 
 
 ---
 
-## 8. Streaming Processing Specifications
+## 8. Streaming Processing — Module Framework
 
-### 8.1 PySpark Job: Volume Anomaly Detection
+All stream processing uses a **BaseDetector** pattern. Each feature module (see `docs/MODULE_REGISTRY.md`) is a detector subclass loaded by the PipelineRunner based on configuration.
 
-**Input:** Kinesis stream (unified trade events)
-**Window:** 60-second tumbling window
-**Logic:**
-1. Aggregate volume per symbol per window
-2. Maintain rolling 1-hour mean and stddev per symbol
-3. Calculate z-score: `z = (window_volume - rolling_mean) / rolling_stddev`
-4. Flag anomaly if `|z| > 2.5`
+### 8.1 Detector Contract
 
-**Output:** Anomaly records → DynamoDB + S3 Iceberg
+```python
+class BaseDetector(ABC):
+    module_id: str               # e.g., "MOD-001"
+    module_name: str             # e.g., "volume-anomaly"
 
-### 8.2 PySpark Job: Whale Detection
+    def configure(self, config: dict) -> None: ...   # Load thresholds, windows
+    def process(self, df: DataFrame) -> DataFrame: ... # Core detection logic
+    def alert_types(self) -> list[str]: ...           # Alert types this module emits
+    def output_table(self) -> str: ...                # Iceberg table name
+```
 
-**Input:** Kinesis stream (unified trade events)
-**Logic:** Flag any single trade where `quote_volume > $100,000`
-**Enrichment:** Add exchange, symbol, side, timestamp
-**Output:** Whale alert records → DynamoDB + S3 Iceberg
+### 8.2 Pipeline Architecture
 
-### 8.3 PySpark Job: Cross-Exchange Spread
+A single PySpark Structured Streaming application runs all active detectors:
 
-**Input:** Kinesis stream (unified trade events from both exchanges)
-**Window:** 30-second tumbling window
-**Logic:**
-1. Calculate VWAP per symbol per exchange per window
-2. Spread = `(binance_vwap - coinbase_vwap) / coinbase_vwap * 100`
-3. Flag if `|spread| > 0.5%`
+```
+[Kinesis Stream] → [Data Quality Module] → [PipelineRunner]
+                                                │
+                                    ┌───────────┼───────────┐
+                                    ▼           ▼           ▼
+                              [Detector 1] [Detector 2] [Detector N]
+                                    │           │           │
+                                    └───────────┼───────────┘
+                                                │
+                                         [AlertRouter]
+                                           │       │
+                                    [DynamoDB]  [S3 Iceberg]
+```
 
-**Output:** Spread records → DynamoDB + S3 Iceberg
+The `PipelineRunner` reads `config/features.yaml`, instantiates active detectors via `ModuleRegistry`, and routes each detector's output through the `AlertRouter`.
+
+### 8.3 Small Tier Detectors (Reference Implementations)
+
+Detailed algorithms for each module are specified in `docs/MODULE_REGISTRY.md`. Summary:
+
+| Module | Window | Key Logic | Alert Type |
+|---|---|---|---|
+| `volume-anomaly` (MOD-001) | 60s tumbling | Z-score on rolling 1h mean/stddev, flag `\|z\| > 2.5` | `volume_spike` |
+| `whale-detector` (MOD-002) | Per-record | Filter `quote_volume > $100K`, severity tiers | `whale_trade` |
+| `spread-calculator` (MOD-003) | 30s tumbling | Cross-exchange VWAP comparison, flag `\|spread\| > 0.5%` | `spread_divergence` |
 
 ### 8.4 Checkpointing & Fault Tolerance
 
-- Spark checkpointing to S3 every 60 seconds
-- Kinesis `TRIM_HORIZON` starting position for recovery
-- Dead letter queue in Kinesis for malformed records
-- Idempotent writes to DynamoDB (event_id as partition key)
+| Setting | Value | Rationale |
+|---|---|---|
+| Checkpoint location | `s3://{prefix}-checkpoint/` | Durable, survives job restarts |
+| Checkpoint interval | 60 seconds | Balances latency vs. S3 write cost |
+| Starting position | `TRIM_HORIZON` | Recovers from last checkpoint on restart |
+| Watermark | 30s (volume), 15s (spread) | Tolerates network jitter |
+| DLQ | Kinesis DLQ stream + S3 DLQ zone | Malformed records preserved for investigation |
+| Idempotency | DynamoDB conditional puts on `event_id` | Prevents duplicate alerts |
+
+### 8.5 Adding a New Detector
+
+1. Subclass `BaseDetector` in `src/detectors/`
+2. Implement `configure()`, `process()`, `alert_types()`, `output_table()`
+3. Register module in `docs/MODULE_REGISTRY.md`
+4. Add module ID to tier config in `config/tiers/`
+5. The `PipelineRunner` auto-discovers and starts the detector on next deploy
 
 ## 9. Data Quality Framework
 
@@ -661,33 +770,56 @@ Returns current streaming metrics for a symbol.
 
 ---
 
-## 12. Cost Model
+## 12. Cost Model — Per-Tier Breakdown
 
-### 12.1 Active Demo Mode (streaming on)
+### 12.1 Small Tier (CEX Detection)
 
-| Service | Estimated Cost/Hour |
-|---|---|
-| Kinesis Data Streams (on-demand, ~1K records/sec) | ~$0.50 |
-| EMR Serverless (2 vCPU, 4GB) | ~$0.30 |
-| DynamoDB (on-demand, low write volume) | ~$0.01 |
-| Lambda (low invocation during demo) | ~$0.01 |
-| **Total active** | **~$0.82/hour** |
+| Service | Config | Est. Cost/Hour |
+|---|---|---|
+| Kinesis Data Streams (on-demand, ~1K rec/s) | 1 shard equivalent | ~$0.50 |
+| EMR Serverless (4 vCPU, 8GB) | Spark 3.4, 3 detectors | ~$0.30 |
+| DynamoDB (PAY_PER_REQUEST) | Low write volume | ~$0.01 |
+| Lambda (low invocation) | 128-512 MB | ~$0.01 |
+| **Total Small tier** | | **~$0.82/hour** |
 
-### 12.2 Idle Mode (streaming off)
+### 12.2 Medium Tier (Identity + Conviction)
 
-| Service | Estimated Cost/Day |
+| Service | Config | Est. Cost/Hour |
+|---|---|---|
+| Small tier baseline | All Small services | ~$0.82 |
+| EMR Serverless (+2 vCPU, +4GB) | 7 detectors, stateful scoring | +$0.20 |
+| Additional Kinesis throughput | Wallet scoring writes | +$0.13 |
+| DynamoDB (higher write volume) | More alert types | +$0.05 |
+| External API calls (label datasets) | Periodic refresh | +$0.20 |
+| **Total Medium tier** | | **~$1.40/hour** |
+
+### 12.3 Large Tier (On-Chain + Predictive)
+
+| Service | Config | Est. Cost/Hour |
+|---|---|---|
+| Medium tier baseline | All Medium services | ~$1.40 |
+| EMR Serverless (+2 vCPU, +4GB) | 11 detectors, block parsing | +$0.35 |
+| RPC node costs (Alchemy/Helius) | Ethereum + Solana WebSocket | +$0.50 |
+| Additional S3 throughput | On-chain event volume | +$0.10 |
+| Batch compute (backtester) | 1-2 runs/day | +$0.15 |
+| **Total Large tier** | | **~$2.50/hour** |
+
+### 12.4 Idle Mode (All Tiers — streaming off)
+
+| Service | Cost/Day |
 |---|---|
 | S3 storage (< 1GB) | < $0.01 |
-| DynamoDB (no reads/writes) | $0.00 |
-| CloudWatch (basic) | $0.00 |
+| Everything else | $0.00 (serverless, scale-to-zero) |
 | **Total idle** | **< $0.01/day** |
 
-### 12.3 Cost Safety Controls
+### 12.5 Cost Safety Controls
 
 - CloudWatch billing alarm at $25 and $50
 - Start/stop shell scripts for streaming components
 - DynamoDB TTL (24h) to auto-purge old alerts
-- S3 lifecycle policy to transition to IA after 30 days, delete after 90
+- S3 lifecycle policy: transition to IA after 30 days, delete after 90
+- Feature tier selection controls blast radius — start Small, upgrade when ready
+- Per-module cost tracked in `docs/MODULE_REGISTRY.md`
 
 ---
 

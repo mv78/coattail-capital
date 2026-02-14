@@ -10,7 +10,7 @@
 | **Version** | 1.0 |
 | **Authors** | Mike Veksler (Principal Architect), Frank D'Avanzo (Head of Agentic AI & Strategic Fly-Bys, BMAD-Method Coach) |
 | **Source PRD** | `docs/PRD.md` v1.0 |
-| **ADRs** | `docs/ADR.md` (ADR-001 through ADR-006) |
+| **ADRs** | `docs/ADR.md` (ADR-001 through ADR-007) |
 | **Region** | us-west-2 (single region) |
 | **Environment** | dev (single account) |
 
@@ -18,27 +18,32 @@
 
 ## 1. Architecture Overview
 
-### 1.1 High-Level Data Flow
+### 1.1 High-Level Data Flow — Generic Connector → Detector → Sink Pipeline
 
 ```mermaid
 graph LR
-    subgraph Sources
-        BN[Binance WebSocket]
-        CB[Coinbase WebSocket]
+    subgraph Connectors [Data Source Connectors]
+        BN[Binance WS<br/>BaseConnector]
+        CB[Coinbase WS<br/>BaseConnector]
+        ETH[Ethereum RPC<br/>BaseConnector - Large]
+        SOL[Solana RPC<br/>BaseConnector - Large]
     end
 
     subgraph Ingestion
-        PR[Python Producer<br/>EC2/ECS/Lambda]
+        PR[Python Producer<br/>Connector Manager]
         KS[Kinesis Data Streams<br/>ON_DEMAND]
         DLQ[Kinesis DLQ<br/>Malformed Records]
     end
 
-    subgraph Processing
-        EMR[EMR Serverless<br/>Spark 3.4 / EMR 7.0]
-        VA[Volume Anomaly<br/>60s tumbling window]
-        WD[Whale Detector<br/>per-record threshold]
-        SC[Spread Calculator<br/>30s tumbling window]
+    subgraph Processing [EMR Serverless - PySpark 3.4]
+        CL[ConfigLoader<br/>features.yaml + SSM]
         DQM[Data Quality Module<br/>Schema + Range + Dedup]
+        MR[ModuleRegistry<br/>Active Detectors]
+        PR2[PipelineRunner]
+        D1[Detector 1<br/>BaseDetector]
+        D2[Detector 2<br/>BaseDetector]
+        DN[Detector N<br/>BaseDetector]
+        AR[AlertRouter<br/>DDB + Iceberg]
     end
 
     subgraph Storage
@@ -65,55 +70,69 @@ graph LR
 
     BN --> PR
     CB --> PR
+    ETH -.-> PR
+    SOL -.-> PR
     PR --> KS
     KS --> DLQ
-    KS --> EMR
-    EMR --> VA
-    EMR --> WD
-    EMR --> SC
-    EMR --> DQM
-    DQM --> DLQ
-    VA --> S3P
-    VA --> DDB
-    WD --> S3P
-    WD --> DDB
-    SC --> S3P
-    SC --> DDB
-    EMR --> S3C
+    KS --> DQM
+    CL --> MR
+    MR --> PR2
+    DQM --> PR2
+    PR2 --> D1
+    PR2 --> D2
+    PR2 --> DN
+    D1 --> AR
+    D2 --> AR
+    DN --> AR
+    AR --> S3P
+    AR --> DDB
+    DQM -.-> S3R
+    PR2 --> S3C
     S3P --> GC
     GC --> LF
     LF --> ATH
     DDB --> LAM
     LAM --> DASH
     EB --> SF
-    SF --> EMR
+    SF --> PR2
     CW --> SNS
 ```
+
+_Dashed lines indicate Large tier components (disabled in Small/Medium)._
 
 ### 1.2 ASCII Data Flow (Whiteboard Version)
 
 ```
-[Binance WS] ──┐
-                ├──→ [Python Producer] ──→ [Kinesis ON_DEMAND] ──→ [EMR Serverless - PySpark 3.4]
-[Coinbase WS] ─┘                              │                          │
-                                          [Kinesis DLQ]     ┌────────────┼────────────┐
-                                                            ▼            ▼            ▼
-                                                      [Volume      [Whale       [Spread
-                                                       Anomaly]     Detector]    Calculator]
-                                                            │            │            │
-                                                            ▼            ▼            ▼
-                                               ┌──── [Data Quality Module] ────┐
-                                               │                              │
-                                          pass │                         fail │
-                                               ▼                              ▼
-                                    ┌──────────┴──────────┐            [S3 DLQ Zone]
-                                    │                     │
-                              [S3 Iceberg]          [DynamoDB]
-                              via Glue Catalog      Hot Alerts (24h TTL)
-                                    │                     │
-                              [Lake Formation]      [Lambda + API GW]
-                                    │                     │
-                              [Athena SQL]          [React Dashboard]
+[Connector 1] ──┐
+[Connector 2] ──┤
+[Connector N] ──┘
+        │
+        ▼
+[Python Producer] ──→ [Kinesis ON_DEMAND] ──→ [Data Quality Module]
+                            │                         │
+                       [Kinesis DLQ]            pass   │   fail
+                                                │      └──→ [S3 DLQ Zone]
+                                                ▼
+                                         [PipelineRunner]
+                                    (reads config/features.yaml)
+                                                │
+                              ┌─────────────────┼─────────────────┐
+                              ▼                 ▼                 ▼
+                        [Detector 1]      [Detector 2]      [Detector N]
+                        BaseDetector      BaseDetector       BaseDetector
+                              │                 │                 │
+                              └─────────────────┼─────────────────┘
+                                                │
+                                         [AlertRouter]
+                                           │       │
+                                    [DynamoDB]  [S3 Iceberg]
+                                  Hot Alerts    via Glue Catalog
+                                    (24h TTL)       │
+                                        │      [Lake Formation]
+                                        │           │
+                                [Lambda + API GW]  [Athena SQL]
+                                        │
+                                [React Dashboard]
 ```
 
 ---
@@ -144,6 +163,8 @@ graph LR
 
 ### 3.1 Ingestion: Unified Trade Event (Kinesis Payload)
 
+All CEX connectors normalize to this schema:
+
 ```json
 {
   "event_id": "uuid",
@@ -158,52 +179,79 @@ graph LR
 }
 ```
 
-### 3.2 Processing: PySpark Schemas
+### 3.2 Base Alert Record
 
-**Volume Aggregation (60s Window)**
-
-| Column | Type | Description |
-|---|---|---|
-| `symbol` | STRING | Trading pair (e.g., BTC-USDT) |
-| `exchange` | STRING | Source exchange |
-| `window_start` | TIMESTAMP | Window start time |
-| `window_end` | TIMESTAMP | Window end time |
-| `trade_count` | LONG | Number of trades in window |
-| `total_volume` | DOUBLE | Sum of quote_volume |
-| `avg_price` | DOUBLE | VWAP for window |
-| `max_price` | DOUBLE | Highest trade price |
-| `min_price` | DOUBLE | Lowest trade price |
-| `buy_volume` | DOUBLE | Volume from buy-side |
-| `sell_volume` | DOUBLE | Volume from sell-side |
-
-**Anomaly Alert Record**
+All modules emit alerts conforming to this **base schema**. The `alert_type` field is an **open string** — new modules register new types without schema changes (see `docs/MODULE_REGISTRY.md` for the alert type registry).
 
 | Column | Type | Description |
 |---|---|---|
 | `alert_id` | STRING | UUID |
-| `alert_type` | STRING | `volume_spike \| whale \| spread` |
+| `alert_type` | STRING | Open string — e.g., `volume_spike`, `whale_trade`, `consensus_bullish` |
+| `module_id` | STRING | Source module (e.g., `MOD-001`) |
 | `symbol` | STRING | Trading pair |
-| `exchange` | STRING | Source exchange |
-| `severity` | STRING | `low \| medium \| high` |
-| `z_score` | DOUBLE | For volume anomalies |
-| `threshold_value` | DOUBLE | Threshold that was exceeded |
-| `actual_value` | DOUBLE | Observed value |
-| `window_start` | TIMESTAMP | Detection window start |
+| `exchange` | STRING | Source exchange (or `null` for cross-exchange/on-chain) |
+| `severity` | STRING | `low \| medium \| high \| critical` |
 | `detected_at` | TIMESTAMP | Alert generation time |
 | `message` | STRING | Human-readable alert text |
 | `ttl_epoch` | LONG | DynamoDB TTL (detected_at + 24h) |
+| `details` | STRING (JSON) | Module-specific payload (see below) |
 
-### 3.3 Storage: Iceberg Tables
+### 3.3 Module-Specific Alert Details
 
-| Table | Partition Strategy | Location |
-|---|---|---|
-| `raw_trades` | `date(timestamp), symbol` | `s3://processed/raw_trades/` |
-| `volume_aggregates` | `date(window_start), symbol` | `s3://processed/volume_aggregates/` |
-| `anomaly_alerts` | `date(detected_at), alert_type` | `s3://processed/anomaly_alerts/` |
-| `whale_trades` | `date(detected_at), symbol` | `s3://processed/whale_trades/` |
-| `exchange_spreads` | `date(window_start), symbol` | `s3://processed/exchange_spreads/` |
+Each module packs its unique data into the `details` JSON field:
 
-All tables use Iceberg hidden partitioning — queries filter on timestamp without knowing partition structure.
+**volume-anomaly (MOD-001):**
+```json
+{"z_score": 3.2, "window_volume": 1500000, "rolling_mean": 450000, "rolling_stddev": 318182, "window_start": "..."}
+```
+
+**whale-detector (MOD-002):**
+```json
+{"quote_volume": 250000, "price": 67432.50, "quantity": 3.71, "side": "buy"}
+```
+
+**spread-calculator (MOD-003):**
+```json
+{"spread_pct": 0.72, "exchange_a_vwap": 67450.00, "exchange_b_vwap": 66965.00, "window_start": "..."}
+```
+
+**consensus (MOD-007):**
+```json
+{"consensus_score": 82, "volume_signal": 0.3, "whale_signal": 0.3, "flow_signal": 0.4, "contributing_alerts": [...]}
+```
+
+This pattern allows the base alert schema to remain stable while modules add arbitrary detail.
+
+### 3.4 Storage: Iceberg Tables
+
+Tables follow a **core + module-created** pattern:
+
+**Core Tables (always present):**
+
+| Table | Owner | Partition Strategy | Location |
+|---|---|---|---|
+| `raw_trades` | Platform (ingestion) | `date(timestamp), symbol` | `s3://processed/raw_trades/` |
+| `anomaly_alerts` | Platform (all modules write) | `date(detected_at), alert_type` | `s3://processed/anomaly_alerts/` |
+
+**Module-Created Tables (created when module is active):**
+
+| Table | Owner Module | Partition Strategy | Location |
+|---|---|---|---|
+| `volume_aggregates` | MOD-001 | `date(window_start), symbol` | `s3://processed/volume_aggregates/` |
+| `whale_trades` | MOD-002 | `date(detected_at), symbol` | `s3://processed/whale_trades/` |
+| `exchange_spreads` | MOD-003 | `date(window_start), symbol` | `s3://processed/exchange_spreads/` |
+| `wallet_scores` | MOD-004 | `date(scored_at), blockchain` | `s3://processed/wallet_scores/` |
+| `labeled_wallets` | MOD-005 | Unpartitioned | `s3://processed/labeled_wallets/` |
+| `flow_direction` | MOD-006 | `date(window_start), symbol` | `s3://processed/flow_direction/` |
+| `consensus_signals` | MOD-007 | `date(window_start), symbol` | `s3://processed/consensus_signals/` |
+| `onchain_events` | MOD-008 | `date(block_timestamp), blockchain` | `s3://processed/onchain_events/` |
+| `dex_trades` | MOD-009 | `date(swap_timestamp), blockchain, protocol` | `s3://processed/dex_trades/` |
+| `predictive_scores` | MOD-010 | `date(scored_at), symbol` | `s3://processed/predictive_scores/` |
+| `backtest_results` | MOD-011 | `date(backtest_date), module_id` | `s3://processed/backtest_results/` |
+
+Module-created tables are provisioned by the detector on first run. Disabled modules = no table created. All tables use Iceberg hidden partitioning.
+
+See `docs/MODULE_REGISTRY.md` for complete table specifications per module.
 
 ### 3.4 DynamoDB: Alerts Table Design
 
@@ -224,61 +272,60 @@ All tables use Iceberg hidden partitioning — queries filter on timestamp witho
 
 ---
 
-## 4. Streaming Architecture
+## 4. Streaming Architecture — Module Framework
 
-### 4.1 PySpark Job: Volume Anomaly Detection
+All stream processing uses a modular pipeline architecture (ADR-007). A single PySpark Structured Streaming application loads active detectors from configuration and routes their output through a shared alert pipeline.
 
-**Input:** Kinesis stream `coattail-trades` (unified trade events)
-**Window:** 60-second tumbling window
-**Watermark:** 30 seconds (tolerate late data up to 30s)
-**Checkpoint:** S3 every 60 seconds
+### 4.1 Pipeline Architecture
 
-**Processing Logic:**
-1. Deserialize JSON from Kinesis `data` column
-2. Run through Data Quality Module (schema + null + range validation)
-3. Aggregate volume per `(symbol, exchange)` per 60s window
-4. Maintain rolling 1-hour mean and stddev per symbol (stateful)
-5. Calculate z-score: `z = (window_volume - rolling_mean) / rolling_stddev`
-6. Flag anomaly if `|z| > 2.5` (severity: `>2.5` medium, `>3.5` high)
+```
+[Kinesis Stream] → [ConfigLoader] → [Data Quality Module] → [PipelineRunner]
+                    reads features.yaml                           │
+                    + SSM params                    ┌─────────────┼─────────────┐
+                                                    ▼             ▼             ▼
+                                              [Detector 1]  [Detector 2]  [Detector N]
+                                              BaseDetector  BaseDetector   BaseDetector
+                                                    │             │             │
+                                                    └─────────────┼─────────────┘
+                                                                  │
+                                                           [AlertRouter]
+                                                             │       │
+                                                      [DynamoDB]  [S3 Iceberg]
+```
 
-**Output Sinks:**
-- Anomaly records → DynamoDB (hot alerts) + S3 Iceberg `anomaly_alerts`
-- All volume aggregates → S3 Iceberg `volume_aggregates`
+**Key classes:**
 
-### 4.2 PySpark Job: Whale Detection
+| Class | Location | Responsibility |
+|---|---|---|
+| `BaseConnector` | `src/spark-jobs/framework/base_connector.py` | Data source abstraction |
+| `BaseDetector` | `src/spark-jobs/framework/base_detector.py` | Detection logic interface |
+| `AlertRouter` | `src/spark-jobs/framework/alert_router.py` | Routes alerts to DDB + Iceberg |
+| `ModuleRegistry` | `src/spark-jobs/framework/module_registry.py` | Discovers and instantiates modules |
+| `ConfigLoader` | `src/spark-jobs/framework/config_loader.py` | Reads YAML + SSM configuration |
+| `PipelineRunner` | `src/spark-jobs/framework/pipeline_runner.py` | Orchestrates full pipeline |
 
-**Input:** Kinesis stream (unified trade events)
-**Processing:** Per-record, no windowing
-**Threshold:** `quote_volume > $100,000`
+### 4.2 Small Tier Detectors (Reference Implementations)
 
-**Processing Logic:**
-1. Deserialize and validate through Data Quality Module
-2. Filter trades where `quote_volume > 100000`
-3. Enrich with severity: `>$100K` medium, `>$500K` high, `>$1M` critical
-4. Write alert with full trade context
+These three detectors ship as the default Small tier. See `docs/MODULE_REGISTRY.md` for detailed specs.
 
-**Output Sinks:**
-- Whale alerts → DynamoDB + S3 Iceberg `whale_trades`
+**MOD-001: Volume Anomaly Detection**
+- **Window:** 60-second tumbling, 30s watermark
+- **Logic:** Aggregate volume per `(symbol, exchange)`. Rolling 1-hour mean/stddev. Z-score flagging at `|z| > 2.5`.
+- **Sinks:** `volume_aggregates` (all windows) + `anomaly_alerts` (flagged only) + DynamoDB
 
-### 4.3 PySpark Job: Cross-Exchange Spread
+**MOD-002: Whale Detection**
+- **Processing:** Per-record (no windowing)
+- **Logic:** Filter `quote_volume > $100K`. Severity tiers: `>$100K` medium, `>$500K` high, `>$1M` critical.
+- **Sinks:** `whale_trades` + `anomaly_alerts` + DynamoDB
 
-**Input:** Kinesis stream (trades from both Binance and Coinbase)
-**Window:** 30-second tumbling window
-**Watermark:** 15 seconds
+**MOD-003: Cross-Exchange Spread**
+- **Window:** 30-second tumbling, 15s watermark
+- **Logic:** VWAP per `(symbol, exchange)`. Spread = `(a_vwap - b_vwap) / b_vwap * 100`. Flag `|spread| > 0.5%`.
+- **Sinks:** `exchange_spreads` + `anomaly_alerts` + DynamoDB
 
-**Processing Logic:**
-1. Deserialize and validate through Data Quality Module
-2. Calculate VWAP per `(symbol, exchange)` per 30s window
-3. Join Binance VWAP with Coinbase VWAP on `(symbol, window)`
-4. Spread = `(binance_vwap - coinbase_vwap) / coinbase_vwap * 100`
-5. Flag if `|spread| > 0.5%`
+### 4.3 Data Quality Module (`src/spark-jobs/common/quality.py`)
 
-**Output Sinks:**
-- Spread records → DynamoDB + S3 Iceberg `exchange_spreads`
-
-### 4.4 Data Quality Module (`src/spark-jobs/common/quality.py`)
-
-Shared module consumed by all three streaming jobs.
+Config-driven quality checker shared by all detectors. Quality rules are loaded from configuration, allowing modules to define additional checks.
 
 **Validation Pipeline:**
 ```
@@ -288,11 +335,12 @@ Raw Record → Schema Validation → Null Checks → Range Validation → Dedupl
             [DLQ: malformed]  [DLQ: incomplete]  [DLQ: invalid]   [Dropped, logged]  [Flagged, processed]
 ```
 
-**Rules:**
+**Default Rules (extensible via config):**
+
 | Dimension | Rule | Action |
 |---|---|---|
 | Completeness | Required fields not null: `event_id`, `symbol`, `price`, `quantity`, `timestamp` | Route to DLQ |
-| Validity | `price > 0`, `quantity > 0`, `symbol` in allowed list | Route to DLQ |
+| Validity | `price > 0`, `quantity > 0`, `symbol` in configured list | Route to DLQ |
 | Timeliness | `timestamp` within 5 minutes of processing time | Flag as late, still process |
 | Consistency | `quote_volume ≈ price × quantity` (±0.1% tolerance) | Log warning, still process |
 | Uniqueness | No duplicate `event_id` within 1-hour window | Deduplicate, keep first |
@@ -302,7 +350,7 @@ Raw Record → Schema Validation → Null Checks → Range Validation → Dedupl
 - `QualityScore` = `RecordsPassed / RecordsProcessed × 100`
 - Alarm: `QualityScore < 95%` for 5 minutes
 
-### 4.5 Checkpointing & Fault Tolerance
+### 4.4 Checkpointing & Fault Tolerance
 
 | Setting | Value | Rationale |
 |---|---|---|
@@ -310,7 +358,7 @@ Raw Record → Schema Validation → Null Checks → Range Validation → Dedupl
 | Checkpoint interval | 60 seconds | Balances latency vs. S3 write cost |
 | Starting position | `TRIM_HORIZON` | Recovers from last checkpoint on restart |
 | Output mode | Append (aggregates), Update (rolling stats) | Appropriate for each sink type |
-| Watermark | 30s (volume), 15s (spread) | Tolerates network jitter without excessive latency |
+| Watermark | Per-detector (30s default) | Tolerates network jitter without excessive latency |
 | S3 checkpoint expiry | 7 days | Prevents stale checkpoint accumulation |
 
 ---
@@ -435,7 +483,7 @@ All services are serverless and communicate via AWS service endpoints:
 **Query Parameters:**
 | Param | Required | Default | Description |
 |---|---|---|---|
-| `type` | No | all | `volume_spike \| whale \| spread` |
+| `type` | No | all | Any registered alert type (see `docs/MODULE_REGISTRY.md`) |
 | `symbol` | No | all | e.g., `BTC-USDT` |
 | `limit` | No | 50 | max 200 |
 | `since` | No | 24h ago | ISO timestamp |
@@ -454,19 +502,19 @@ All services are serverless and communicate via AWS service endpoints:
 
 ---
 
-## 10. Cost Architecture
+## 10. Cost Architecture — Per-Tier
 
-### 10.1 Active Demo Mode
+Cost scales with the feature tier selected. Each tier adds modules and increases EMR sizing.
 
-| Service | Config | Est. Cost/Hour |
-|---|---|---|
-| Kinesis (ON_DEMAND, ~1K rec/s) | 1 shard equivalent | ~$0.50 |
-| EMR Serverless (2 vCPU, 4GB) | Spark 3.4 | ~$0.30 |
-| DynamoDB (PAY_PER_REQUEST) | Low write volume | ~$0.01 |
-| Lambda (low invocation) | 128-512 MB | ~$0.01 |
-| **Total active** | | **~$0.82/hour** |
+### 10.1 Active Cost by Tier
 
-### 10.2 Idle Mode
+| Tier | EMR Config | Kinesis | DDB + Lambda | Total/Hour |
+|---|---|---|---|---|
+| **Small** | 4 vCPU, 8GB (3 detectors) | ~$0.50 | ~$0.02 | **~$0.82** |
+| **Medium** | 6 vCPU, 12GB (7 detectors) | ~$0.63 | ~$0.07 | **~$1.40** |
+| **Large** | 8 vCPU, 16GB (11 detectors + RPC) | ~$0.63 | ~$0.07 + $0.50 RPC | **~$2.50** |
+
+### 10.2 Idle Mode (All Tiers)
 
 | Service | Cost/Day |
 |---|---|
@@ -485,6 +533,7 @@ All services are serverless and communicate via AWS service endpoints:
 | Checkpoint expiry | S3 lifecycle | 7 days |
 | Athena results expiry | S3 lifecycle | 7 days |
 | Start/Stop scripts | `scripts/start.sh`, `scripts/stop.sh` | Manual |
+| Feature tier selection | `var.feature_tier` in Terraform | Controls EMR sizing |
 
 ---
 
@@ -557,6 +606,61 @@ terraform output
 
 ---
 
+## 13. Extension Guide
+
+This section explains how to extend Coat Tail Capital with new connectors, detectors, and tiers.
+
+### 13.1 Adding a New Connector (Data Source)
+
+1. **Create** `src/connectors/{name}_connector.py`
+2. **Subclass** `BaseConnector`:
+   ```python
+   class KrakenConnector(BaseConnector):
+       def connect(self) -> None: ...
+       def normalize(self, raw: dict) -> TradeEvent: ...
+       def health_check(self) -> bool: ...
+       def shutdown(self) -> None: ...
+   ```
+3. **Register** in `config/features.yaml` under `exchange_connectors` or `blockchain_connectors`
+4. **Update** `docs/MODULE_REGISTRY.md` if any modules depend on this connector
+
+### 13.2 Adding a New Detector (Feature Module)
+
+1. **Reserve** a module ID (next `MOD-XXX`) in `docs/MODULE_REGISTRY.md`
+2. **Create** `src/detectors/{name}_detector.py`
+3. **Subclass** `BaseDetector`:
+   ```python
+   class LiquidityDetector(BaseDetector):
+       module_id = "MOD-012"
+       module_name = "liquidity-monitor"
+
+       def configure(self, config: dict) -> None: ...
+       def process(self, df: DataFrame) -> DataFrame: ...
+       def alert_types(self) -> list[str]: ...
+       def output_table(self) -> str: ...
+   ```
+4. **Add** module spec to `docs/MODULE_REGISTRY.md`
+5. **Add** module ID to the appropriate tier YAML in `config/tiers/`
+6. **The PipelineRunner** auto-discovers the module on next deploy
+
+### 13.3 Adding a New Tier
+
+1. **Create** `config/tiers/{tier_name}.yaml` listing active module IDs
+2. **Add** tier to `infra/variables.tf` validation list
+3. **Add** tier to `tier_modules` locals in `infra/main.tf`
+4. **Define** EMR sizing for the new tier in the `tier_emr_config` locals
+5. **Update** cost table in `docs/PRD.md` and `docs/ARCHITECTURE.md`
+
+### 13.4 Design Principles
+
+- **Single Spark application** — all detectors share one EMR cluster. One bill, simpler ops.
+- **YAML config over database flags** — version-controlled, reviewable in PRs.
+- **SSM for runtime, YAML for logic** — infrastructure config in SSM, module behavior in YAML.
+- **Framework first, then modules** — build BaseDetector/BaseConnector before implementing specific jobs.
+- **Module isolation** — each detector is testable independently with mock DataFrames.
+
+---
+
 ## Appendix A: Alternatives Not Chosen
 
 | Component | Chosen | Rejected | Why |
@@ -570,6 +674,7 @@ terraform output
 | Dashboard | React + S3 | Grafana, QuickSight | Custom portfolio piece, no server cost |
 | Alert store | DynamoDB | RDS, ElastiCache | Serverless pricing, TTL cleanup, schema flexibility |
 | IaC | Terraform | CDK, CloudFormation | Multi-cloud portable, state management |
+| Feature architecture | Module-based composition | Phase-based scoping | Extensibility, per-module cost control, Principal-level design (ADR-007) |
 
 ---
 

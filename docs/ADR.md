@@ -300,3 +300,72 @@ We need data quality validation in our streaming pipeline. Options include build
 - Not reusable across projects without extraction
 
 **Production recommendation:** For enterprise deployments, recommend Great Expectations or AWS Glue Data Quality for more comprehensive rule management and reporting.
+
+---
+
+## ADR-007: Modular Feature Architecture — Phases vs Modules
+
+**Status:** Accepted
+**Date:** 2025-02-14
+**Deciders:** Frank, Mike Veksler
+
+### Context
+
+The original PRD defined capabilities in three rigid scope phases: Weekend MVP, Principal-Level Additions, and Future Enhancements. Adding new "smart money" features — wallet scoring, on-chain tracking, predictive signals — required rewriting multiple documents and refactoring code that assumed a fixed set of three streaming jobs.
+
+As the project vision expanded from "detect CEX anomalies" to "find what smart money is doing and predict where it's going," we needed an architecture that could grow without constant restructuring.
+
+### Options Considered
+
+| Criteria | Phase-Based Scoping | Module-Based Composition |
+|---|---|---|
+| **Adding a new feature** | Rewrite PRD scope, update architecture, modify pipeline code | New module class + config entry |
+| **Cost control** | All-or-nothing per phase | Per-module cost tracking, tier-based sizing |
+| **Independent deployment** | No — phases are monolithic | Yes — enable/disable individual modules |
+| **Complexity** | Low upfront, high over time | Higher upfront (framework), low ongoing |
+| **Testing** | Coupled test suites | Isolated module tests + integration |
+| **Extensibility signal** | Shows scope management | Shows plugin architecture (Principal-level skill) |
+
+### Decision
+
+**Module-based composition with config-driven feature toggles.**
+
+Replace the phase-based scope with a **Module-Tier System**:
+
+- **11 feature modules** (MOD-001 through MOD-011) cataloged in `docs/MODULE_REGISTRY.md`
+- **3 tiers** (Small, Medium, Large) — each a superset of the previous
+- **Standard module contract** — every module implements `BaseDetector` with consistent interface
+- **YAML configuration** — modules activated via `config/features.yaml`, tier definitions in `config/tiers/`
+- **Terraform integration** — `feature_tier` variable controls EMR sizing and SSM parameters
+- **Single Spark application** — all detectors share one EMR cluster (one bill, simpler ops)
+
+### Rationale
+
+1. **Extensibility IS a Principal-level skill.** A plugin architecture demonstrates more architectural maturity than a rigid three-phase plan. Portfolio reviewers see composable design, not just task completion.
+
+2. **Per-module cost control.** Each module documents its cost impact. Operators choose a tier that matches their budget. Small tier runs on 4 vCPU; Large needs 8 vCPU. No surprises.
+
+3. **Right-sized complexity.** Small tier has the same code quality and patterns as Large — just fewer modules loaded. The framework overhead is minimal (6 base classes), but the extensibility payoff is significant.
+
+4. **New features = new module + config entry.** Adding wallet scoring doesn't touch volume anomaly detection. Adding on-chain ingestion doesn't require rewriting the CEX pipeline. This is the microkernel pattern applied to data processing.
+
+5. **YAML config over database flags.** For a portfolio project, version-controlled YAML is the right choice — reviewers can see the configuration in the repo. SSM parameters handle runtime values that come from Terraform.
+
+### Consequences
+
+**Positive:**
+- Adding a feature requires only: new `BaseDetector` subclass, MODULE_REGISTRY entry, config update
+- Cost scales predictably with tier selection
+- Modules can be tested in isolation
+- Architecture diagram shows generic pipeline, not hardcoded jobs
+- Demonstrates plugin architecture pattern (valued at Principal level)
+
+**Negative:**
+- More upfront design work (base classes, registry, config loader)
+- Slightly more indirection when reading code (must follow module → registry → config)
+- Risk of over-engineering if the project never grows beyond Small tier
+
+**Mitigation:**
+- Framework classes are minimal (< 50 lines each for base classes)
+- Small tier works identically to the original 3-job design — the framework is transparent
+- MODULE_REGISTRY.md serves as both spec and documentation, not extra overhead

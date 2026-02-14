@@ -1,0 +1,47 @@
+# Coat Tail Capital — Feature Configuration
+# This file controls which modules are active at runtime.
+# Tier definitions are in config/tiers/. SSM parameters override at deploy time.
+
+feature_tier: small
+
+# Trading symbols to track
+symbols:
+  - btcusdt
+  - ethusdt
+  - solusdt
+
+# Active data source connectors
+exchange_connectors:
+  - binance-ws
+  - coinbase-ws
+
+# Blockchain connectors (Large tier only)
+blockchain_connectors: []
+
+# Module-specific overrides (optional)
+# Set to true/false to override tier defaults for individual modules.
+# module_overrides:
+#   MOD-004: true   # Enable wallet-scorer even on Small tier
+#   MOD-003: false  # Disable spread-calculator
+
+# Data quality settings
+quality:
+  cloudwatch_namespace: CoatTail/Quality
+  dlq_retention_days: 7
+  quality_score_alarm_threshold: 95
+
+# Detector thresholds (overridable per-module)
+thresholds:
+  volume_anomaly:
+    z_score_medium: 2.5
+    z_score_high: 3.5
+    window_seconds: 60
+    rolling_window_seconds: 3600
+  whale_detector:
+    min_quote_volume_usd: 100000
+    severity_high_usd: 500000
+    severity_critical_usd: 1000000
+  spread_calculator:
+    spread_threshold_pct: 0.5
+    window_seconds: 30
+    watermark_seconds: 15

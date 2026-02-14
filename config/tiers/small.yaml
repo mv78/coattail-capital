@@ -1,0 +1,21 @@
+# Small Tier — Detect CEX Activity
+# Cost: ~$0.82/hr active, ~$0.01/day idle
+# EMR: 4 vCPU, 8GB
+
+tier: small
+description: "Detect CEX activity — volume anomalies, whale trades, cross-exchange spreads"
+
+modules:
+  MOD-001: true  # volume-anomaly
+  MOD-002: true  # whale-detector
+  MOD-003: true  # spread-calculator
+
+required_connectors:
+  exchange:
+    - binance-ws
+    - coinbase-ws
+  blockchain: []
+
+emr_sizing:
+  max_vcpu: 4
+  max_memory_gb: 8

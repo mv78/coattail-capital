@@ -5,6 +5,54 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
   prefix     = "${var.project_name}-${var.environment}"
+
+  # ---------- Feature Module System ----------
+
+  # Tier → module mappings (each tier is a superset of the previous)
+  tier_modules = {
+    small = {
+      "MOD-001" = true # volume-anomaly
+      "MOD-002" = true # whale-detector
+      "MOD-003" = true # spread-calculator
+    }
+    medium = {
+      "MOD-001" = true # volume-anomaly
+      "MOD-002" = true # whale-detector
+      "MOD-003" = true # spread-calculator
+      "MOD-004" = true # wallet-scorer
+      "MOD-005" = true # labeled-whales
+      "MOD-006" = true # flow-direction
+      "MOD-007" = true # consensus
+    }
+    large = {
+      "MOD-001" = true  # volume-anomaly
+      "MOD-002" = true  # whale-detector
+      "MOD-003" = true  # spread-calculator
+      "MOD-004" = true  # wallet-scorer
+      "MOD-005" = true  # labeled-whales
+      "MOD-006" = true  # flow-direction
+      "MOD-007" = true  # consensus
+      "MOD-008" = true  # onchain-ingester
+      "MOD-009" = true  # dex-tracker
+      "MOD-010" = true  # predictive-scorer
+      "MOD-011" = true  # backtester
+    }
+  }
+
+  # Merge tier defaults with explicit overrides
+  active_modules = merge(
+    local.tier_modules[var.feature_tier],
+    var.enabled_modules
+  )
+
+  # EMR sizing per tier
+  tier_emr_config = {
+    small  = { max_vcpu = 4, max_memory = "8 GB" }
+    medium = { max_vcpu = 6, max_memory = "12 GB" }
+    large  = { max_vcpu = 8, max_memory = "16 GB" }
+  }
+
+  emr_config = local.tier_emr_config[var.feature_tier]
 }
 
 # ---------- Kinesis Data Stream ----------
@@ -56,8 +104,8 @@ module "emr_serverless" {
   source = "./modules/emr-serverless"
 
   prefix                 = local.prefix
-  max_vcpu               = var.emr_max_vcpu
-  max_memory             = var.emr_max_memory_gb
+  max_vcpu               = local.emr_config.max_vcpu
+  max_memory             = local.emr_config.max_memory
   auto_stop_idle_minutes = var.emr_auto_stop_idle_minutes
 }
 
@@ -167,6 +215,37 @@ resource "aws_ssm_parameter" "glue_database" {
   name  = "/${local.prefix}/glue/database-name"
   type  = "String"
   value = module.glue.database_name
+}
+
+# ---------- Feature Module SSM Parameters ----------
+resource "aws_ssm_parameter" "feature_tier" {
+  name  = "/${local.prefix}/features/tier"
+  type  = "String"
+  value = var.feature_tier
+}
+
+resource "aws_ssm_parameter" "active_modules" {
+  name  = "/${local.prefix}/features/active-modules"
+  type  = "StringList"
+  value = join(",", [for mod, enabled in local.active_modules : mod if enabled])
+}
+
+resource "aws_ssm_parameter" "symbols" {
+  name  = "/${local.prefix}/features/symbols"
+  type  = "StringList"
+  value = join(",", var.symbols)
+}
+
+resource "aws_ssm_parameter" "exchange_connectors" {
+  name  = "/${local.prefix}/features/exchange-connectors"
+  type  = "StringList"
+  value = join(",", var.exchange_connectors)
+}
+
+resource "aws_ssm_parameter" "blockchain_connectors" {
+  name  = "/${local.prefix}/features/blockchain-connectors"
+  type  = "StringList"
+  value = join(",", var.blockchain_connectors)
 }
 
 # ---------- Step Functions (Batch Orchestration) ----------

@@ -80,3 +80,39 @@ variable "s3_expiration_days" {
   type        = number
   default     = 90
 }
+
+# ---------- Feature Module System ----------
+variable "feature_tier" {
+  description = "Feature tier: controls which modules are active and EMR sizing (small/medium/large)"
+  type        = string
+  default     = "small"
+
+  validation {
+    condition     = contains(["small", "medium", "large"], var.feature_tier)
+    error_message = "feature_tier must be one of: small, medium, large"
+  }
+}
+
+variable "enabled_modules" {
+  description = "Override map to enable/disable individual modules regardless of tier. Keys are module IDs (e.g., MOD-001), values are booleans."
+  type        = map(bool)
+  default     = {}
+}
+
+variable "symbols" {
+  description = "List of trading pair symbols to track"
+  type        = list(string)
+  default     = ["btcusdt", "ethusdt", "solusdt"]
+}
+
+variable "exchange_connectors" {
+  description = "List of CEX exchange connectors to activate"
+  type        = list(string)
+  default     = ["binance-ws", "coinbase-ws"]
+}
+
+variable "blockchain_connectors" {
+  description = "List of blockchain connectors to activate (Large tier)"
+  type        = list(string)
+  default     = []
+}

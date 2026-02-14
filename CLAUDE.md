@@ -24,22 +24,29 @@ Real-time whale tracking and alpha scoring platform built with PySpark Structure
 
 ```
 coattail-capital/
+├── config/                    # Feature configuration
+│   ├── features.yaml          # Active module config
+│   └── tiers/                 # Tier definitions
+│       ├── small.yaml
+│       ├── medium.yaml
+│       └── large.yaml
 ├── docs/                      # Documentation
 │   ├── PRD.md                 # Product requirements (START HERE)
+│   ├── MODULE_REGISTRY.md     # Feature module catalog (11 modules)
 │   ├── ARCHITECTURE.md        # System design
 │   ├── WELL-ARCHITECTED.md    # AWS WAF analysis
-│   ├── ADR.md                 # Architecture decision records
+│   ├── ADR.md                 # Architecture decision records (ADR-001 to ADR-007)
 │   └── RUNBOOK.md             # Weekend execution guide
 ├── agents/                    # BMAD agent prompts
 │   ├── ba-agent.md            # Business Analyst
 │   ├── architect-agent.md     # Solutions Architect
-│   ├── data-engineer-agent.md # Data Engineer
+│   ├── data-engineer-agent.md # Data Engineer (framework-first)
 │   ├── security-agent.md      # Security Engineer
 │   ├── devops-agent.md        # DevOps Engineer
 │   └── qa-agent.md            # QA Engineer
 ├── infra/                     # Terraform infrastructure
-│   ├── main.tf                # Root module composition
-│   ├── variables.tf           # Input variables
+│   ├── main.tf                # Root module + tier locals + feature SSM
+│   ├── variables.tf           # Input variables + feature_tier + module toggles
 │   ├── outputs.tf             # Output values
 │   └── modules/               # Terraform modules
 │       ├── kinesis/
@@ -52,8 +59,10 @@ coattail-capital/
 │       └── lake-formation/
 ├── src/                       # Application code (to be built)
 │   ├── producer/              # Kinesis producer
+│   ├── connectors/            # Data source implementations
+│   ├── detectors/             # Feature module implementations
 │   ├── spark-jobs/
-│   │   ├── streaming/         # Real-time jobs
+│   │   ├── framework/         # Plugin framework (base classes)
 │   │   ├── batch/             # Historical/reprocessing
 │   │   └── common/            # Shared modules
 │   ├── api/                   # Lambda handlers
@@ -97,19 +106,23 @@ pytest tests/ -v
 ## Current State
 
 ### ✅ Completed (Specs & Infrastructure)
-- PRD with data quality, batch processing sections
-- 7 BMAD agent specifications (including BMAD Expert Agent)
-- Architecture document with Mermaid diagrams
+- PRD with modular feature architecture (tiers: Small/Medium/Large)
+- Module Registry with 11 feature modules (MOD-001 through MOD-011)
+- 7 BMAD agent specifications (data-engineer-agent rewritten for framework-first approach)
+- Architecture document with generic connector → detector → sink pipeline
 - Well-Architected Framework review (6 pillars)
-- 9 Terraform modules (Kinesis, S3, EMR, Glue, IAM, Monitoring, Step Functions, Lake Formation)
-- 6 Architecture Decision Records
+- 9 Terraform modules + feature tier system (tier-aware EMR sizing, SSM parameters)
+- 7 Architecture Decision Records (ADR-007: Modular Feature Architecture)
+- Feature configuration system (config/features.yaml + tier YAMLs)
 - Weekend runbook
 - GitHub Actions CI
 
 ### 🚧 To Build (Application Code)
-- [ ] Kinesis producer (Binance + Coinbase WebSocket)
-- [ ] PySpark streaming jobs (volume anomaly, whale detector, spread calculator)
-- [ ] Data quality module
+- [ ] Module framework (BaseConnector, BaseDetector, AlertRouter, ModuleRegistry, ConfigLoader, PipelineRunner)
+- [ ] Connector implementations (Binance, Coinbase as BaseConnector subclasses)
+- [ ] Small tier detectors (volume-anomaly, whale-detector, spread-calculator)
+- [ ] Config-driven data quality module
+- [ ] Kinesis producer with connector manager
 - [ ] Batch jobs (historical loader, reprocessor)
 - [ ] Lambda API handlers
 - [ ] React dashboard

@@ -1,0 +1,27 @@
+# Medium Tier — Track Who Smart Money IS
+# Cost: ~$1.40/hr active, ~$0.01/day idle
+# EMR: 6 vCPU, 12GB
+
+tier: medium
+description: "Track who smart money is — wallet scoring, identity enrichment, flow analysis, consensus signals"
+
+modules:
+  # Small tier (inherited)
+  MOD-001: true  # volume-anomaly
+  MOD-002: true  # whale-detector
+  MOD-003: true  # spread-calculator
+  # Medium tier additions
+  MOD-004: true  # wallet-scorer
+  MOD-005: true  # labeled-whales
+  MOD-006: true  # flow-direction
+  MOD-007: true  # consensus
+
+required_connectors:
+  exchange:
+    - binance-ws
+    - coinbase-ws
+  blockchain: []
+
+emr_sizing:
+  max_vcpu: 6
+  max_memory_gb: 12

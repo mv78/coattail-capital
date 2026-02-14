@@ -1,0 +1,34 @@
+# Large Tier — Predict Where It's Going
+# Cost: ~$2.50/hr active, ~$0.01/day idle
+# EMR: 8 vCPU, 16GB
+
+tier: large
+description: "Predict where smart money is going — on-chain tracking, DEX analysis, predictive scoring, back-testing"
+
+modules:
+  # Small tier (inherited)
+  MOD-001: true  # volume-anomaly
+  MOD-002: true  # whale-detector
+  MOD-003: true  # spread-calculator
+  # Medium tier (inherited)
+  MOD-004: true  # wallet-scorer
+  MOD-005: true  # labeled-whales
+  MOD-006: true  # flow-direction
+  MOD-007: true  # consensus
+  # Large tier additions
+  MOD-008: true  # onchain-ingester
+  MOD-009: true  # dex-tracker
+  MOD-010: true  # predictive-scorer
+  MOD-011: true  # backtester
+
+required_connectors:
+  exchange:
+    - binance-ws
+    - coinbase-ws
+  blockchain:
+    - ethereum-rpc
+    - solana-rpc
+
+emr_sizing:
+  max_vcpu: 8
+  max_memory_gb: 16
