@@ -6,6 +6,10 @@
 *.tfplan
 terraform.tfvars
 crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Python
 __pycache__/
@@ -19,11 +23,31 @@ venv/
 *.egg-info/
 dist/
 build/
+*.egg
+pip-wheel-metadata/
+
+# Python tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# PySpark
+metastore_db/
+derby.log
+spark-warehouse/
+*.parquet
+*.avro
 
 # Node (dashboard)
 node_modules/
 .next/
 out/
+.turbo/
 
 # IDE
 .vscode/
@@ -31,6 +55,7 @@ out/
 *.swp
 *.swo
 *~
+*.iml
 
 # OS
 .DS_Store
@@ -40,6 +65,13 @@ Thumbs.db
 *.log
 /tmp/
 
-# Environment
+# Environment & secrets
 .env
 .env.local
+.env.*.local
+*.pem
+*.key
+
+# AWS
+.aws/
+samconfig.toml
