@@ -134,18 +134,5 @@
       "Edit(.git/**)",
       "Edit(terraform.tfvars)"
     ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-critical-files.sh"
-          }
-        ]
-      }
-    ]
   }
 }
