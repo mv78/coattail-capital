@@ -78,13 +78,35 @@ coattail-capital/
 
 ### Using BMAD Agents
 
-This project uses [BMAD (Breakthrough Method for Agile AI Driven Development)](https://github.com/bmad-code-org/BMAD-METHOD). Each agent in `agents/` is a specialized prompt. To use an agent:
+This project uses [BMAD (Breakthrough Method for Agile AI Driven Development)](https://github.com/bmad-code-org/BMAD-METHOD). All 7 agents are registered in **`agents.json`** for discovery.
 
+**Quick reference — which agent to use:**
 ```bash
-# Load an agent's context and give it a task
+# View all agents
+cat agents.json | jq '.quick_reference."I want to..."'
+
+# Typical outputs:
+# "refine the product requirements" → ba
+# "design the architecture" → architect
+# "build the streaming code" → data-engineer
+# "set up infrastructure" → devops
+# "review security" → security
+# "design tests" → qa
+```
+
+**Load an agent and give it a task:**
+```bash
+# Example: Build code with the data engineer
 claude "$(cat agents/data-engineer-agent.md)
 
-Build the Kinesis producer in src/producer/ that connects to Binance WebSocket..."
+Build the module framework in src/spark-jobs/framework/"
+```
+
+**See workflow chains:**
+```bash
+cat agents.json | jq '.workflows'
+# full_bmad_chain — BA → Architect → Data Engineer → DevOps → Security → QA
+# code_first — Start from architecture, build code
 ```
 
 ### Key Commands

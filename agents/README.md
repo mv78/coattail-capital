@@ -34,15 +34,26 @@ Each agent file below can be used as a Claude Code task prompt. The recommended 
 
 Alternatively, chain them in a single session by feeding outputs as inputs to the next agent.
 
+### Agent Discovery
+
+All agents are registered in **`agents.json`** for Claude Code discovery. You can:
+
+- View all agents and their roles: `cat agents.json | jq '.agents[] | {name, role, file}'`
+- See which agent to use: `cat agents.json | jq '.quick_reference."I want to..."'`
+- Follow a workflow: `cat agents.json | jq '.workflows'`
+
 ---
 
 ## Agent Specifications
 
-See individual files:
-- `bmad-expert-agent.md` — BMAD-Method Expert (process reviewer & coach)
-- `ba-agent.md` — Business Analyst
-- `architect-agent.md` — Solutions Architect
-- `data-engineer-agent.md` — Data Engineer
-- `security-agent.md` — Security Engineer
-- `devops-agent.md` — DevOps Engineer
-- `qa-agent.md` — QA Engineer
+See individual files below. For quick reference, see `agents.json`:
+
+| Agent | Role | File | Use When |
+|---|---|---|---|
+| **BMAD Expert** | Process reviewer & coach | `bmad-expert-agent.md` | Validating BMAD compliance, getting next steps |
+| **Business Analyst** | Requirements engineer | `ba-agent.md` | Writing PRD from business goals |
+| **Solutions Architect** | System designer | `architect-agent.md` | Designing architecture from PRD |
+| **Data Engineer** | Code builder | `data-engineer-agent.md` | Building PySpark streaming code |
+| **DevOps Engineer** | Infrastructure builder | `devops-agent.md` | Building Terraform & CI/CD |
+| **Security Engineer** | Security reviewer | `security-agent.md` | Security review & hardening |
+| **QA Engineer** | Test designer | `qa-agent.md` | Designing tests & quality gates |

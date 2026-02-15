@@ -1,0 +1,133 @@
+{
+  "project": "Coat Tail Capital",
+  "description": "BMAD-Method agent specs for real-time whale tracking and alpha scoring platform",
+  "repository": "https://github.com/mveksler/coattail-capital",
+  "method": "BMAD (Breakthrough Method for Agile AI Driven Development)",
+  "agents": [
+    {
+      "id": "bmad-expert",
+      "name": "BMAD-Method Expert Agent",
+      "role": "Process reviewer and coach",
+      "file": "agents/bmad-expert-agent.md",
+      "description": "Reviews artifacts and coaches team on BMAD compliance and next steps. Canonical source of BMAD truth.",
+      "phase": "Oversight",
+      "order": 0,
+      "consumes": ["PRD", "Architecture", "Code Specs"],
+      "produces": ["Process feedback", "Coaching notes", "Next steps"],
+      "keywords": ["process", "coaching", "compliance", "review"],
+      "invoke": "claude \"$(cat agents/bmad-expert-agent.md)\""
+    },
+    {
+      "id": "ba",
+      "name": "Business Analyst Agent",
+      "role": "Translate business opportunities into product requirements",
+      "file": "agents/ba-agent.md",
+      "description": "Creates structured product requirements (PRD) from business goals. First agent in the BMAD chain.",
+      "phase": "Discovery",
+      "order": 1,
+      "consumes": ["Business goals", "Market analysis"],
+      "produces": ["Product Requirements Document (PRD)"],
+      "keywords": ["requirements", "product", "prd", "business"],
+      "invoke": "claude \"$(cat agents/ba-agent.md)\n\n[Your business problem]\""
+    },
+    {
+      "id": "architect",
+      "name": "Solutions Architect Agent",
+      "role": "Translate product requirements into technical architecture",
+      "file": "agents/architect-agent.md",
+      "description": "Designs system architecture, service selection, data flow, and schemas from PRD.",
+      "phase": "Design",
+      "order": 2,
+      "consumes": ["PRD (docs/PRD.md)"],
+      "produces": ["Architecture document", "Data flow diagrams", "Service justifications", "ADRs"],
+      "keywords": ["architecture", "design", "systems", "aws"],
+      "invoke": "claude \"$(cat agents/architect-agent.md)\""
+    },
+    {
+      "id": "data-engineer",
+      "name": "Data Engineer Agent",
+      "role": "Translate architecture into production-grade streaming code",
+      "file": "agents/data-engineer-agent.md",
+      "description": "Builds PySpark streaming jobs, connectors, detectors, schemas, and tests. Framework-first approach with modular plugin architecture.",
+      "phase": "Implementation",
+      "order": 3,
+      "consumes": ["Architecture (docs/ARCHITECTURE.md)", "Module Registry (docs/MODULE_REGISTRY.md)"],
+      "produces": ["PySpark streaming jobs", "Connector implementations", "Detector modules", "Unit tests"],
+      "keywords": ["spark", "streaming", "python", "iceberg", "kinesis"],
+      "invoke": "claude \"$(cat agents/data-engineer-agent.md)\n\n[Your task]\""
+    },
+    {
+      "id": "devops",
+      "name": "DevOps Engineer Agent",
+      "role": "Build infrastructure and CI/CD pipelines",
+      "file": "agents/devops-agent.md",
+      "description": "Configures Terraform modules, CI/CD pipelines, monitoring, and deployment automation.",
+      "phase": "Implementation",
+      "order": 4,
+      "consumes": ["Architecture (docs/ARCHITECTURE.md)", "Terraform specs"],
+      "produces": ["Terraform modules", "CI/CD workflows", "Monitoring dashboards"],
+      "keywords": ["terraform", "devops", "ci/cd", "infrastructure"],
+      "invoke": "claude \"$(cat agents/devops-agent.md)\""
+    },
+    {
+      "id": "security",
+      "name": "Security Engineer Agent",
+      "role": "Review code and infrastructure for security best practices",
+      "file": "agents/security-agent.md",
+      "description": "Conducts security reviews, IAM policy analysis, and compliance checks. Provides hardening recommendations.",
+      "phase": "Review",
+      "order": 5,
+      "consumes": ["Code (src/)", "Terraform (infra/)", "Architecture docs"],
+      "produces": ["Security review report", "IAM policies", "Hardening recommendations"],
+      "keywords": ["security", "iam", "compliance", "review"],
+      "invoke": "claude \"$(cat agents/security-agent.md)\""
+    },
+    {
+      "id": "qa",
+      "name": "QA Engineer Agent",
+      "role": "Design tests and quality assurance strategies",
+      "file": "agents/qa-agent.md",
+      "description": "Creates test plans, integration tests, and quality gates. Defines SLA validation and test coverage.",
+      "phase": "Testing",
+      "order": 6,
+      "consumes": ["Code (src/)", "Data schemas", "API specs"],
+      "produces": ["Test plans", "Integration tests", "Quality gates", "SLA definitions"],
+      "keywords": ["testing", "qa", "pytest", "integration-tests"],
+      "invoke": "claude \"$(cat agents/qa-agent.md)\""
+    }
+  ],
+  "workflows": {
+    "full_bmad_chain": {
+      "description": "Complete BMAD workflow from business goal to deployed, tested system",
+      "steps": [
+        "bmad-expert (validate process)",
+        "ba (write PRD)",
+        "architect (design system)",
+        "data-engineer (build code)",
+        "devops (build infrastructure)",
+        "security (security review)",
+        "qa (test coverage)",
+        "bmad-expert (final review)"
+      ]
+    },
+    "code_first": {
+      "description": "Start from existing architecture and build code",
+      "steps": ["data-engineer", "devops", "security", "qa"]
+    },
+    "design_review": {
+      "description": "Validate and refine architecture",
+      "steps": ["architect", "bmad-expert"]
+    }
+  },
+  "quick_reference": {
+    "I want to...": {
+      "refine the product requirements": "ba",
+      "design the architecture": "architect",
+      "build the streaming code": "data-engineer",
+      "set up infrastructure and CI/CD": "devops",
+      "review security": "security",
+      "design tests": "qa",
+      "validate the BMAD process": "bmad-expert"
+    }
+  }
+}
