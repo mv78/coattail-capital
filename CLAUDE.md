@@ -24,39 +24,31 @@ Real-time whale tracking and alpha scoring platform built with PySpark Structure
 
 ```
 coattail-capital/
+├── _bmad/                     # BMAD v6 method (agents, workflows, configs)
+│   ├── _config/               # Manifests, agent customizations
+│   ├── core/                  # Core platform (bmad-master, brainstorming, party-mode)
+│   └── bmm/                   # BMM module (10 agents, 25 workflows)
+├── _bmad-output/              # BMAD artifacts (sprint-status, stories, specs)
+│   ├── planning-artifacts/    # PRDs, architecture docs, epics
+│   └── implementation-artifacts/ # Story files, tech specs
+├── .claude/
+│   └── commands/              # BMAD v6 slash commands (41 commands)
+├── agents/                    # Legacy BMAD agent prompts (pre-v6 reference)
 ├── config/                    # Feature configuration
 │   ├── features.yaml          # Active module config
-│   └── tiers/                 # Tier definitions
-│       ├── small.yaml
-│       ├── medium.yaml
-│       └── large.yaml
+│   └── tiers/                 # Tier definitions (small/medium/large)
 ├── docs/                      # Documentation
 │   ├── PRD.md                 # Product requirements (START HERE)
 │   ├── MODULE_REGISTRY.md     # Feature module catalog (11 modules)
 │   ├── ARCHITECTURE.md        # System design
 │   ├── WELL-ARCHITECTED.md    # AWS WAF analysis
-│   ├── ADR.md                 # Architecture decision records (ADR-001 to ADR-007)
+│   ├── ADR.md                 # Architecture decision records
 │   └── RUNBOOK.md             # Weekend execution guide
-├── agents/                    # BMAD agent prompts
-│   ├── ba-agent.md            # Business Analyst
-│   ├── architect-agent.md     # Solutions Architect
-│   ├── data-engineer-agent.md # Data Engineer (framework-first)
-│   ├── security-agent.md      # Security Engineer
-│   ├── devops-agent.md        # DevOps Engineer
-│   └── qa-agent.md            # QA Engineer
 ├── infra/                     # Terraform infrastructure
 │   ├── main.tf                # Root module + tier locals + feature SSM
 │   ├── variables.tf           # Input variables + feature_tier + module toggles
 │   ├── outputs.tf             # Output values
-│   └── modules/               # Terraform modules
-│       ├── kinesis/
-│       ├── s3-lakehouse/
-│       ├── emr-serverless/
-│       ├── glue/
-│       ├── iam/
-│       ├── monitoring/
-│       ├── step-functions/
-│       └── lake-formation/
+│   └── modules/               # Terraform modules (8 modules)
 ├── src/                       # Application code (to be built)
 │   ├── producer/              # Kinesis producer
 │   ├── connectors/            # Data source implementations
@@ -68,46 +60,67 @@ coattail-capital/
 │   ├── api/                   # Lambda handlers
 │   └── dashboard/             # React frontend
 ├── scripts/                   # Operational scripts
-│   ├── start.sh
-│   ├── stop.sh
-│   └── bootstrap-state.sh
 └── tests/                     # Test files (to be built)
 ```
 
 ## Development Workflow
 
-### Using BMAD Agents
+### BMAD v6 Method
 
-This project uses [BMAD (Breakthrough Method for Agile AI Driven Development)](https://github.com/bmad-code-org/BMAD-METHOD). All 7 agents are registered in **`agents.json`** for discovery.
+This project uses [BMAD v6.0.0-Beta.8](https://github.com/bmad-code-org/BMAD-METHOD) with Claude Code integration. The method provides 10 agents, 25 workflows, and 41 native slash commands.
 
-**Quick reference — which agent to use:**
-```bash
-# View all agents
-cat agents.json | jq '.quick_reference."I want to..."'
-
-# Typical outputs:
-# "refine the product requirements" → ba
-# "design the architecture" → architect
-# "build the streaming code" → data-engineer
-# "set up infrastructure" → devops
-# "review security" → security
-# "design tests" → qa
+**Get oriented:**
+```
+/bmad-help                          # What to do next, which workflow to run
+/bmad-party-mode                    # Multi-agent group discussion
 ```
 
-**Load an agent and give it a task:**
-```bash
-# Example: Build code with the data engineer
-claude "$(cat agents/data-engineer-agent.md)
-
-Build the module framework in src/spark-jobs/framework/"
+**Phase 1 — Analysis:**
+```
+/bmad-bmm-create-product-brief      # Business Analyst (Mary) creates product brief
+/bmad-bmm-domain-research           # Domain research with web sources
+/bmad-bmm-market-research           # Market/competitive research
 ```
 
-**See workflow chains:**
-```bash
-cat agents.json | jq '.workflows'
-# full_bmad_chain — BA → Architect → Data Engineer → DevOps → Security → QA
-# code_first — Start from architecture, build code
+**Phase 2 — Planning:**
 ```
+/bmad-bmm-create-prd                # Product Manager (John) creates PRD
+/bmad-bmm-validate-prd              # Validate existing PRD against BMAD standards
+/bmad-bmm-create-ux-design          # UX Designer (Sally) creates UX spec
+```
+
+**Phase 3 — Solutioning:**
+```
+/bmad-bmm-create-architecture       # Architect (Winston) designs system
+/bmad-bmm-create-epics-and-stories  # Break PRD into epics and stories
+/bmad-bmm-check-implementation-readiness  # Gate check before coding
+```
+
+**Phase 4 — Implementation:**
+```
+/bmad-bmm-sprint-planning           # Generate sprint-status.yaml
+/bmad-bmm-create-story              # Scrum Master (Bob) prepares next story
+/bmad-bmm-dev-story                 # Developer (Amelia) implements story
+/bmad-bmm-code-review               # Adversarial code review
+/bmad-bmm-retrospective             # Post-epic retrospective
+```
+
+**Quick Flow (small tasks):**
+```
+/bmad-bmm-quick-spec                # Barry creates lean tech spec
+/bmad-bmm-quick-dev                 # Barry implements from spec or instructions
+```
+
+**Load a specific agent directly:**
+```
+/bmad-agent-bmm-dev                 # Amelia — Senior Software Engineer
+/bmad-agent-bmm-architect           # Winston — System Architect
+/bmad-agent-bmm-sm                  # Bob — Scrum Master
+/bmad-agent-bmm-qa                  # Quinn — QA Engineer
+/bmad-agent-bmad-master             # BMad Master — Orchestrator
+```
+
+> **Note:** Legacy agent prompts are preserved in `agents/` for project-specific reference (especially `data-engineer-agent.md` with PySpark framework specs). BMAD v6 agents live in `_bmad/bmm/agents/`.
 
 ### Key Commands
 
@@ -130,7 +143,6 @@ pytest tests/ -v
 ### ✅ Completed (Specs & Infrastructure)
 - PRD with modular feature architecture (tiers: Small/Medium/Large)
 - Module Registry with 11 feature modules (MOD-001 through MOD-011)
-- 7 BMAD agent specifications (data-engineer-agent rewritten for framework-first approach)
 - Architecture document with generic connector → detector → sink pipeline
 - Well-Architected Framework review (6 pillars)
 - 9 Terraform modules + feature tier system (tier-aware EMR sizing, SSM parameters)
@@ -138,6 +150,7 @@ pytest tests/ -v
 - Feature configuration system (config/features.yaml + tier YAMLs)
 - Weekend runbook
 - GitHub Actions CI
+- BMAD v6.0.0-Beta.8 installed with Claude Code integration (10 agents, 25 workflows, 41 slash commands)
 
 ### 🚧 To Build (Application Code)
 - [ ] Module framework (BaseConnector, BaseDetector, AlertRouter, ModuleRegistry, ConfigLoader, PipelineRunner)
@@ -182,7 +195,9 @@ pytest tests/ -v
 1. `docs/PRD.md` — Full requirements, schemas, data quality specs
 2. `docs/ADR.md` — Why we chose Kinesis over MSK, Iceberg over Delta, etc.
 3. `docs/RUNBOOK.md` — Hour-by-hour weekend execution plan
-4. `agents/data-engineer-agent.md` — Detailed specs for PySpark jobs
+4. `agents/data-engineer-agent.md` — Detailed specs for PySpark jobs (legacy, still authoritative for framework)
+5. `_bmad/_config/workflow-manifest.csv` — All available BMAD workflows
+6. `_bmad/_config/agent-manifest.csv` — All available BMAD agents
 
 ## Environment Variables
 

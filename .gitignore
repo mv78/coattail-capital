@@ -78,3 +78,9 @@ samconfig.toml
 
 # Claude Code local settings (personal overrides)
 .claude/settings.local.json
+
+# BMAD output artifacts (tracked selectively via git add -f)
+_bmad-output/planning-artifacts/*
+_bmad-output/implementation-artifacts/*
+!_bmad-output/planning-artifacts/.gitkeep
+!_bmad-output/implementation-artifacts/.gitkeep
