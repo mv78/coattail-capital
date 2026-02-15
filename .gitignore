@@ -84,3 +84,4 @@ _bmad-output/planning-artifacts/*
 _bmad-output/implementation-artifacts/*
 !_bmad-output/planning-artifacts/.gitkeep
 !_bmad-output/implementation-artifacts/.gitkeep
+!_bmad-output/implementation-artifacts/sprint-status.yaml
