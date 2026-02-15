@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git status *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git diff)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(git tag *)",
+      "Bash(git remote *)",
+      "Bash(git merge *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git pull)",
+      "Bash(git rev-parse *)",
+      "Bash(git show *)",
+
+      "Bash(terraform init *)",
+      "Bash(terraform init)",
+      "Bash(terraform plan *)",
+      "Bash(terraform plan)",
+      "Bash(terraform validate *)",
+      "Bash(terraform validate)",
+      "Bash(terraform fmt *)",
+      "Bash(terraform fmt)",
+      "Bash(terraform version)",
+      "Bash(terraform output *)",
+      "Bash(terraform output)",
+      "Bash(terraform state list *)",
+      "Bash(terraform state show *)",
+
+      "Bash(pytest *)",
+      "Bash(python -m pytest *)",
+      "Bash(python -m mypy *)",
+      "Bash(python -m ruff *)",
+      "Bash(ruff check *)",
+      "Bash(ruff format *)",
+      "Bash(pip list *)",
+      "Bash(pip list)",
+      "Bash(pip show *)",
+      "Bash(python --version)",
+
+      "Bash(npm run *)",
+      "Bash(npm list *)",
+      "Bash(npm test *)",
+      "Bash(npx *)",
+
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh api *)",
+      "Bash(gh repo *)",
+
+      "Bash(aws s3 ls *)",
+      "Bash(aws sts get-caller-identity *)",
+      "Bash(aws sts get-caller-identity)",
+
+      "Bash(docker ps *)",
+      "Bash(docker ps)",
+      "Bash(docker logs *)",
+      "Bash(docker images *)",
+      "Bash(docker images)",
+
+      "Bash(ls *)",
+      "Bash(ls)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(wc *)",
+      "Bash(sort *)",
+      "Bash(date *)",
+      "Bash(date)",
+      "Bash(whoami)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.aws.amazon.com)",
+      "WebFetch(domain:registry.terraform.io)",
+      "WebFetch(domain:*.npmjs.org)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:pypi.org)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git push)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(git rebase *)",
+
+      "Bash(terraform apply *)",
+      "Bash(terraform destroy *)",
+      "Bash(terraform import *)",
+
+      "Bash(pip install *)",
+      "Bash(pip uninstall *)",
+      "Bash(npm install *)",
+      "Bash(npm install)",
+
+      "Bash(rm *)",
+      "Bash(docker rm *)",
+      "Bash(docker rmi *)",
+      "Bash(docker stop *)",
+
+      "Bash(aws s3 rm *)",
+      "Bash(aws s3 cp *)",
+      "Bash(aws ec2 terminate-instances *)"
+    ],
+    "deny": [
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(eval *)",
+      "Bash(exec *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777 *)",
+      "Bash(dd *)",
+      "Bash(mkfs *)",
+
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./.env)",
+      "Edit(./.env.*)",
+      "Edit(.git/**)",
+      "Edit(terraform.tfvars)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-critical-files.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
