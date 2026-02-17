@@ -1,0 +1,90 @@
+# Claude Code Agent Registration
+# This file registers BMAD agents for the Coat Tail Capital project
+# Available via /agents command in Claude Code
+
+agents:
+  - id: bmad-expert
+    name: "BMAD-Method Expert"
+    description: "Reviews BMAD compliance and coaches on process"
+    prompt_file: agents/bmad-expert-agent.md
+    category: oversight
+    keywords: [process, coaching, compliance, review]
+
+  - id: ba
+    name: "Business Analyst"
+    description: "Translate business goals into Product Requirements Document (PRD)"
+    prompt_file: agents/ba-agent.md
+    category: discovery
+    keywords: [requirements, product, prd, business, goals]
+
+  - id: architect
+    name: "Solutions Architect"
+    description: "Design system architecture from PRD requirements"
+    prompt_file: agents/architect-agent.md
+    category: design
+    keywords: [architecture, design, systems, aws, diagrams]
+
+  - id: data-engineer
+    name: "Data Engineer"
+    description: "Build PySpark streaming jobs, connectors, and detectors from architecture specs"
+    prompt_file: agents/data-engineer-agent.md
+    category: implementation
+    keywords: [spark, streaming, python, iceberg, kinesis, code]
+
+  - id: devops
+    name: "DevOps Engineer"
+    description: "Build Terraform infrastructure and CI/CD pipelines"
+    prompt_file: agents/devops-agent.md
+    category: implementation
+    keywords: [terraform, devops, ci/cd, infrastructure, github-actions]
+
+  - id: security
+    name: "Security Engineer"
+    description: "Review code and infrastructure for security vulnerabilities"
+    prompt_file: agents/security-agent.md
+    category: review
+    keywords: [security, iam, compliance, review, hardening]
+
+  - id: qa
+    name: "QA Engineer"
+    description: "Design tests and quality assurance strategies"
+    prompt_file: agents/qa-agent.md
+    category: testing
+    keywords: [testing, qa, pytest, integration-tests, validation]
+
+workflows:
+  full-bmad-chain:
+    name: "Full BMAD Workflow"
+    description: "Complete workflow from business goal to deployed system"
+    agents:
+      - bmad-expert
+      - ba
+      - architect
+      - data-engineer
+      - devops
+      - security
+      - qa
+      - bmad-expert
+
+  code-first:
+    name: "Code-First (from architecture)"
+    description: "Start with approved architecture, skip to code implementation"
+    agents:
+      - data-engineer
+      - devops
+      - security
+      - qa
+
+  design-review:
+    name: "Architecture Design Review"
+    description: "Validate and refine architecture design"
+    agents:
+      - architect
+      - bmad-expert
+
+commands:
+  list-agents: "View all available agents"
+  show-workflows: "View available workflow chains"
+  run-agent:
+    description: "Load agent prompt and execute a task"
+    usage: "claude \"$(cat agents/{agent-id}-agent.md)\n\n[your task]\""

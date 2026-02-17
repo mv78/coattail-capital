@@ -661,6 +661,192 @@ This section explains how to extend Coat Tail Capital with new connectors, detec
 
 ---
 
+## 14. Data Lineage & Correlation ID Tracking
+
+### 14.1 Data Lineage Overview
+
+Every alert produced by Coat Tail Capital includes a `_lineage` context that traces the alert back to its source trade event. This enables:
+
+- **Auditability:** Query any alert and see exactly which detector triggered it, with which configuration
+- **Reproducibility:** Same `config_hash` means identical detection logic — for re-runs and incident analysis
+- **Traceability:** Correlation IDs thread from Kinesis ingestion through all detectors to final sinks
+- **Compliance:** AI Safety requirement NF6 — explicit data provenance documentation
+
+### 14.2 Lineage Data Flow
+
+```
+[Exchange WebSocket]
+    ↓ raw trade dict
+[BaseConnector.normalize_with_lineage()]
+    ↓ injects correlation_id = sha256(exchange+symbol+timestamp)[:16]
+[TradeEvent dict + correlation_id]
+    ↓ Kinesis PutRecord (correlation_id in payload)
+[Kinesis Data Stream]
+    ↓ Spark reads DataFrame (correlation_id present as column)
+[Data Quality Module] → passes correlation_id through, DLQ records include it
+    ↓
+[BaseDetector.detect_with_lineage()]
+    ↓ adds module_id, config_hash, processed_at, pipeline_version
+[Alert DataFrame with _lineage JSON column]
+    ↓
+[AlertRouter.route()]
+    ↓ merges _lineage into details JSON field
+[DynamoDB alert]
+    ↓ details field contains _lineage, queryable by correlation_id
+[Iceberg anomaly_alerts table]
+    ↓ details column contains _lineage as JSON, queryable via Athena
+```
+
+### 14.3 LineageContext Schema
+
+Every alert's `details` JSON field contains a `_lineage` object with these fields:
+
+| Field | Type | Example | Purpose |
+|---|---|---|---|
+| `correlation_id` | STRING | `a3f8c9e2b1d45f67` | Deterministic ID from sha256(exchange+symbol+timestamp)[:16]. Same trade = same ID across all detectors. |
+| `source_table` | STRING | `raw_trades` | Which table the data originated from. Always "raw_trades" for trade-based alerts. |
+| `source_event_id` | STRING | `uuid-12345-abc` | Original trade event ID from the exchange for back-reference. |
+| `module_id` | STRING | `MOD-001` | Feature module that created the alert (see `docs/MODULE_REGISTRY.md`). |
+| `detector_name` | STRING | `volume-anomaly` | Human-readable detector name. |
+| `config_hash` | STRING | `sha256(...):64` | SHA256 of sorted JSON config dict. Ensures reproducibility — same hash = same detection logic. |
+| `processed_at` | STRING | `2025-02-05T10:30:45.123Z` | ISO timestamp when the detector ran and generated the alert. |
+| `pipeline_version` | STRING | `a3f8c9e2b` or `dev` | Git commit SHA (in CI/CD) or "dev" (local). Allows tracing alerts to exact code version. |
+
+### 14.4 Querying Lineage in Athena
+
+Example SQL queries to trace alerts by correlation_id:
+
+**Find all alerts with a specific correlation_id:**
+```sql
+SELECT
+  alert_id,
+  alert_type,
+  detected_at,
+  json_extract_scalar(details, '$._lineage.correlation_id') as correlation_id,
+  json_extract_scalar(details, '$._lineage.module_id') as module_id,
+  json_extract_scalar(details, '$._lineage.detector_name') as detector_name,
+  json_extract_scalar(details, '$._lineage.config_hash') as config_hash
+FROM coattail_dev_lakehouse.anomaly_alerts
+WHERE json_extract_scalar(details, '$._lineage.correlation_id') = 'a3f8c9e2b1d45f67'
+ORDER BY detected_at;
+```
+
+**Find all alerts produced by a specific config:**
+```sql
+SELECT
+  alert_id,
+  module_id,
+  detected_at,
+  COUNT(*) as alert_count
+FROM coattail_dev_lakehouse.anomaly_alerts
+WHERE json_extract_scalar(details, '$._lineage.config_hash') = 'abc123def456...'
+GROUP BY alert_id, module_id, detected_at;
+```
+
+**Trace an alert back to raw trade event:**
+```sql
+SELECT
+  t.exchange,
+  t.symbol,
+  t.price,
+  t.quantity,
+  a.alert_type,
+  a.detected_at
+FROM coattail_dev_lakehouse.raw_trades t
+JOIN coattail_dev_lakehouse.anomaly_alerts a
+  ON t.event_id = json_extract_scalar(a.details, '$._lineage.source_event_id')
+WHERE json_extract_scalar(a.details, '$._lineage.correlation_id') = 'a3f8c9e2b1d45f67';
+```
+
+### 14.5 DynamoDB Lineage Storage
+
+In DynamoDB, the `_lineage` object is nested in the `details` JSON field:
+
+```json
+{
+  "alert_id": "uuid-...",
+  "alert_type": "volume_spike",
+  "module_id": "MOD-001",
+  "symbol": "BTC-USDT",
+  "detected_at": "2025-02-05T10:30:00Z",
+  "ttl_epoch": 1738956600,
+  "details": {
+    "z_score": 3.2,
+    "window_volume": 1500000,
+    "_lineage": {
+      "correlation_id": "a3f8c9e2b1d45f67",
+      "source_table": "raw_trades",
+      "source_event_id": "uuid-12345-abc",
+      "module_id": "MOD-001",
+      "detector_name": "volume-anomaly",
+      "config_hash": "abc123def456...",
+      "processed_at": "2025-02-05T10:30:45.123Z",
+      "pipeline_version": "a3f8c9e2b"
+    }
+  }
+}
+```
+
+### 14.6 Implementation Details
+
+**Correlation ID Generation:** Deterministic, not random
+```python
+correlation_id = sha256(f"{exchange}:{symbol}:{timestamp}".encode()).hexdigest()[:16]
+```
+Same exchange + symbol + timestamp always produces the same ID, enabling deduplication and trace linking across detector runs.
+
+**Config Hash:** Snapshot of detector configuration for reproducibility
+```python
+config_hash = sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+```
+If you re-run detection with the same config_hash, you'll get identical results.
+
+**Zero Cost Storage:** Lineage is stored in the existing `details` JSON field, not as additional columns or tables. No schema changes required.
+
+**Framework Integration:** All lineage injection happens in base classes (`BaseConnector`, `BaseDetector`, `AlertRouter`), not in individual detectors. Detectors inherit lineage for free.
+
+### 14.7 Lineage Verification (Unit Tests)
+
+Example test to verify lineage is wired end-to-end:
+
+```python
+def test_lineage_preserved_through_pipeline():
+    """Verify correlation_id threads from ingestion to alert."""
+    # Create mock trade event
+    event = {
+        "exchange": "binance",
+        "symbol": "btcusdt",
+        "timestamp": "2025-02-05T10:30:00Z",
+        "event_id": "evt-123",
+        "price": 67432.50,
+        "quantity": 0.5,
+        "side": "buy"
+    }
+
+    # Inject correlation ID (BaseConnector.normalize_with_lineage)
+    expected_cid = generate_correlation_id("binance", "btcusdt", "2025-02-05T10:30:00Z")
+    event["correlation_id"] = expected_cid
+
+    # Run detector
+    result = detector.detect_with_lineage(df, config, spark)
+
+    # Verify _lineage column present
+    assert "_lineage" in result.columns
+
+    # Extract lineage and verify fields
+    lineage_json = result.select("_lineage").first()[0]
+    lineage = json.loads(lineage_json)
+
+    assert lineage["correlation_id"] == expected_cid
+    assert lineage["module_id"] == "MOD-001"
+    assert lineage["detector_name"] == "volume-anomaly"
+    assert "config_hash" in lineage
+    assert "processed_at" in lineage
+    assert "pipeline_version" in lineage
+```
+
+---
+
 ## Appendix A: Alternatives Not Chosen
 
 | Component | Chosen | Rejected | Why |

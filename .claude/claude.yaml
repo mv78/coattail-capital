@@ -1,0 +1,92 @@
+# Claude Code Configuration for Coat Tail Capital
+
+project:
+  name: Coat Tail Capital
+  description: Real-time whale tracking and alpha scoring platform with PySpark Structured Streaming on AWS
+  repository: https://github.com/mveksler/coattail-capital
+  method: BMAD (Breakthrough Method for Agile AI Driven Development)
+
+# Agent discovery configuration
+agents:
+  config_file: agents.yml
+  directory: agents/
+
+# Development environment
+development:
+  python_version: "3.11+"
+  testing_framework: pytest
+  linting: ruff
+  type_checking: mypy
+
+# Key documentation files (entry points)
+documentation:
+  start_here: docs/PRD.md
+  architecture: docs/ARCHITECTURE.md
+  decisions: docs/ADR.md
+  modules: docs/MODULE_REGISTRY.md
+  agents: agents/README.md
+
+# Project structure hints for Claude
+structure:
+  docs: Documentation (specs, architecture, decisions)
+  agents: BMAD agent prompts for Claude Code
+  infra: Terraform infrastructure-as-code
+  src: Application source code
+  tests: Unit and integration tests
+  config: Feature configuration (YAML)
+  scripts: Operational scripts
+
+# Key workflows for common tasks
+workflows:
+  refine_prd: "Load ba agent to refine product requirements"
+  design_architecture: "Load architect agent to design system"
+  build_code: "Load data-engineer agent to implement features"
+  setup_infrastructure: "Load devops agent to build Terraform"
+  security_review: "Load security agent for code/infra review"
+  design_tests: "Load qa agent to design test coverage"
+
+# Terraform configuration
+terraform:
+  directory: infra/
+  main_file: infra/main.tf
+  variables_file: infra/variables.tf
+  key_variables:
+    - feature_tier: Controls module activation and EMR sizing (small/medium/large)
+    - enabled_modules: Override individual modules
+    - symbols: Trading pair symbols to track
+    - exchange_connectors: CEX connectors (binance-ws, coinbase-ws)
+    - blockchain_connectors: Blockchain RPC connectors (ethereum-rpc, solana-rpc)
+
+# Feature configuration
+features:
+  config_file: config/features.yaml
+  tiers:
+    small: Basic CEX detection (3 modules, 4 vCPU, ~$0.82/hr)
+    medium: Whale tracking (7 modules, 6 vCPU, ~$1.40/hr)
+    large: Predictive analytics (11 modules, 8 vCPU, ~$2.50/hr)
+
+# Module system
+modules:
+  registry: docs/MODULE_REGISTRY.md
+  framework: src/spark-jobs/framework/
+  connectors: src/connectors/
+  detectors: src/detectors/
+  count: 11
+  architecture: Modular with BaseConnector/BaseDetector plugin pattern
+
+# Build tasks (Phase D: Application Code)
+build_tasks:
+  - module-framework: Build BaseConnector, BaseDetector, AlertRouter, etc.
+  - connectors: Implement Binance/Coinbase WebSocket connectors
+  - detectors-small: Implement Small tier detectors (MOD-001, MOD-002, MOD-003)
+  - quality-framework: Config-driven data quality checker
+  - schemas: Extensible base alert record + module extensions
+  - batch-jobs: Historical loader, reprocessor
+  - tests: Unit and integration tests
+
+# Helpful commands
+commands:
+  view-agents: "cat agents.json | jq '.agents[] | {name, role}'"
+  which-agent: "cat agents.json | jq '.quick_reference.\"I want to...\"'"
+  list-modules: "cat docs/MODULE_REGISTRY.md | grep 'MOD-'"
+  check-tier: "terraform -chdir=infra output | grep feature_tier"

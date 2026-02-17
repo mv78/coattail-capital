@@ -73,7 +73,7 @@ Simultaneously, AWS practitioners need portfolio projects that demonstrate real-
 | NF3 | Well-Architected compliance | Documented decisions per WAF pillar |
 | NF4 | Security-first design | Least-privilege IAM, encryption at rest/transit |
 | NF5 | Observable | CloudWatch dashboards, Spark UI metrics |
-| NF6 | AI Safety documented | Data lineage, no PII, guardrails documented |
+| NF6 | Data lineage + AI safety | Every alert in DynamoDB/Iceberg contains `_lineage` JSON with: `correlation_id` (sha256 of exchange+symbol+timestamp), `source_event_id`, `module_id`, `config_hash`, `pipeline_version`, `processed_at`. Any alert is traceable back to raw Kinesis event within 5 minutes via correlation_id lookup. No PII collected (exchange names and token symbols are public). Guardrails documented in `docs/ARCHITECTURE.md` Section 14. |
 
 ### 4.3 Portfolio Goals
 
