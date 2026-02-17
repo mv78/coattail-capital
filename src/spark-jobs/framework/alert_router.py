@@ -72,7 +72,7 @@ class AlertRouter:
             DataFrame with merged details field
         """
         # Parse _lineage JSON string to struct
-        from pyspark.sql.functions import col, from_json, lit, struct
+        from pyspark.sql.functions import col, from_json, struct
 
         # Define a loose schema for lineage (all fields as strings)
         lineage_schema = """
