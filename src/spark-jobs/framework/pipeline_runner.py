@@ -60,7 +60,7 @@ class PipelineRunner:
         #    - Call alert_router.route() with output
         # 6. Set up checkpointing (self.spark.conf.set(...))
         # 7. Start streaming query (writeStream.start())
-        pass
+        return
 
     def _read_kinesis(self) -> DataFrame:
         """
@@ -75,7 +75,7 @@ class PipelineRunner:
         # - kinesis.streamName
         # - startingPosition (TRIM_HORIZON for demo, LATEST for production)
         # Parse JSON and project relevant columns
-        pass
+        raise NotImplementedError("Kinesis read not yet implemented")
 
     def _run_data_quality(self, df: DataFrame) -> DataFrame:
         """
@@ -96,7 +96,7 @@ class PipelineRunner:
         # - Range checks (price > 0, quantity > 0, side in ["buy", "sell"])
         # - Deduplication (group by event_id within time window)
         # - Dead-lettering (write failed records to S3 with correlation_id)
-        pass
+        return df
 
     def _run_detectors(self, df: DataFrame) -> list[tuple[str, DataFrame]]:
         """
@@ -117,7 +117,7 @@ class PipelineRunner:
         #   3. Call detector.detect_with_lineage(df, config, self.spark)
         #   4. Collect (module_id, result_df) tuple
         # Return list of tuples
-        pass
+        return []
 
     def _setup_checkpointing(self, checkpoint_bucket: str) -> None:
         """

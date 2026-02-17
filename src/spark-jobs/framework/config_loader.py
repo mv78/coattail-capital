@@ -46,7 +46,7 @@ class ConfigLoader:
         # 3. Load config/tiers/{tier}.yaml
         # 4. Check for SSM overrides (via Terraform SSM parameters)
         # 5. Merge and return
-        pass
+        return {}
 
     def get_active_tier(self) -> str:
         """
@@ -55,7 +55,7 @@ class ConfigLoader:
         Returns: One of "small", "medium", "large"
         """
         # TODO: Extract from config
-        pass
+        return ""
 
     def get_active_modules(self) -> list[str]:
         """
@@ -65,7 +65,7 @@ class ConfigLoader:
             List of module IDs (e.g., ["MOD-001", "MOD-002", "MOD-003"])
         """
         # TODO: Extract from tier configuration
-        pass
+        return []
 
     def get_module_config(self, module_id: str) -> dict[str, Any]:
         """
@@ -75,7 +75,7 @@ class ConfigLoader:
             Module-specific config (e.g., {"threshold": 2.5, "window_seconds": 60})
         """
         # TODO: Extract module config from merged config
-        pass
+        return {}
 
     def get_symbols(self) -> list[str]:
         """
@@ -85,7 +85,7 @@ class ConfigLoader:
             List of symbols (e.g., ["btcusdt", "ethusdt", "solusdt"])
         """
         # TODO: Extract from config, with SSM override support
-        pass
+        return []
 
     def get_connectors(self) -> list[str]:
         """
@@ -95,4 +95,4 @@ class ConfigLoader:
             List of connector names (e.g., ["binance-ws", "coinbase-ws"])
         """
         # TODO: Extract from config
-        pass
+        return []

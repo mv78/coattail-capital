@@ -42,7 +42,7 @@ class ModuleRegistry:
             config_loader: ConfigLoader instance (provides active module list)
         """
         self.config_loader = config_loader
-        self._detectors = {}
+        self._detectors: dict[str, BaseDetector] = {}
 
     def load_active_modules(self) -> dict[str, BaseDetector]:
         """
@@ -70,7 +70,7 @@ class ModuleRegistry:
         #    - Verify it inherits from BaseDetector
         #    - Instantiate it
         # 3. Return dict of instantiated detectors
-        pass
+        return {}
 
     def get_detector(self, module_id: str) -> BaseDetector:
         """
