@@ -6,12 +6,7 @@ AlertRouter takes alert DataFrames from detectors and writes them to:
 2. Iceberg — for historical analysis with lineage queryable via SQL
 """
 
-import json
-from typing import Any
-
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, from_json, to_json, when
-from pyspark.sql.types import StringType, StructType
 
 
 class AlertRouter:
@@ -77,8 +72,7 @@ class AlertRouter:
             DataFrame with merged details field
         """
         # Parse _lineage JSON string to struct
-        from pyspark.sql.functions import col, from_json, get_json_object, lit, struct
-        from pyspark.sql.types import StringType
+        from pyspark.sql.functions import col, from_json, lit, struct
 
         # Define a loose schema for lineage (all fields as strings)
         lineage_schema = """
