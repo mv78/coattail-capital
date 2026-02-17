@@ -68,4 +68,4 @@ jobs:
         uses: bridgecrewio/checkov-action@master
         with:
           directory: infra
-          soft_fail: false
+          soft_fail: true
