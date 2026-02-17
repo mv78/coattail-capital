@@ -1,10 +1,8 @@
-# 🐋 Coat Tail Capital
+# 🐋 Coat Tail Capital - [![CI](https://github.com/mv78/coattail-capital/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mv78/coattail-capital/actions)
 
 **Riding smart money so you don't have to think.**
 
 > Real-time whale tracking, alpha scoring, and signal generation — built with PySpark Structured Streaming on AWS. A Principal Architect portfolio project demonstrating big data streaming, on-chain analytics, and AI-assisted development.
-
-[![CI](https://github.com/mv78/coattail-capital/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mv78/coattail-capital/actions)
 
 ---
 
