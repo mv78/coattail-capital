@@ -146,9 +146,9 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title = "Estimated Charges"
+          title   = "Estimated Charges"
           metrics = [["AWS/Billing", "EstimatedCharges", "Currency", "USD", { stat = "Maximum", period = 21600 }]]
-          view  = "singleValue"
+          view    = "singleValue"
         }
       },
       {
@@ -158,10 +158,10 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 24
         height = 6
         properties = {
-          title = "Custom - Anomaly Alerts Published"
+          title   = "Custom - Anomaly Alerts Published"
           metrics = [["CryptoPulse", "AnomalyAlerts", { stat = "Sum", period = 300 }]]
-          view  = "timeSeries"
-          region = "us-west-2"
+          view    = "timeSeries"
+          region  = "us-west-2"
         }
       }
     ]

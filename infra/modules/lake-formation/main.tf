@@ -74,7 +74,7 @@ resource "aws_lakeformation_permissions" "emr_tables" {
 
   table {
     database_name = var.glue_database_name
-    wildcard      = true  # All tables in the database
+    wildcard      = true # All tables in the database
   }
 }
 

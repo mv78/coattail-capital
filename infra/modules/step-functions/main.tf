@@ -70,9 +70,9 @@ resource "aws_iam_role_policy" "step_functions_emr" {
         Resource = "arn:aws:emr-serverless:${var.region}:${var.account_id}:/applications/${var.emr_application_id}/*"
       },
       {
-        Sid    = "PassRole"
-        Effect = "Allow"
-        Action = "iam:PassRole"
+        Sid      = "PassRole"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
         Resource = var.emr_execution_role_arn
         Condition = {
           StringEquals = {
@@ -113,9 +113,9 @@ resource "aws_iam_role_policy" "step_functions_sns" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "PublishSNS"
-        Effect = "Allow"
-        Action = "sns:Publish"
+        Sid      = "PublishSNS"
+        Effect   = "Allow"
+        Action   = "sns:Publish"
         Resource = var.sns_topic_arn
       }
     ]
@@ -154,9 +154,9 @@ resource "aws_iam_role" "historical_loader" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -173,8 +173,8 @@ resource "aws_iam_role_policy" "historical_loader_s3" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Action = ["s3:PutObject", "s3:GetObject"]
+      Effect   = "Allow"
+      Action   = ["s3:PutObject", "s3:GetObject"]
       Resource = "arn:aws:s3:::${var.raw_bucket}/*"
     }]
   })
@@ -193,8 +193,8 @@ resource "aws_lambda_function" "historical_loader" {
 
   environment {
     variables = {
-      RAW_BUCKET    = var.raw_bucket
-      SYMBOLS       = "BTCUSDT,ETHUSDT,SOLUSDT"
+      RAW_BUCKET = var.raw_bucket
+      SYMBOLS    = "BTCUSDT,ETHUSDT,SOLUSDT"
     }
   }
 
@@ -208,9 +208,9 @@ resource "aws_iam_role" "quality_validator" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -228,18 +228,18 @@ resource "aws_iam_role_policy" "quality_validator_athena" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"]
+        Effect   = "Allow"
+        Action   = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"]
         Resource = "*"
       },
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject"]
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
         Resource = "arn:aws:s3:::${var.processed_bucket}/*"
       },
       {
-        Effect = "Allow"
-        Action = ["glue:GetTable", "glue:GetPartitions"]
+        Effect   = "Allow"
+        Action   = ["glue:GetTable", "glue:GetPartitions"]
         Resource = "*"
       }
     ]
@@ -259,8 +259,8 @@ resource "aws_lambda_function" "quality_validator" {
 
   environment {
     variables = {
-      GLUE_DATABASE     = var.glue_database
-      PROCESSED_BUCKET  = var.processed_bucket
+      GLUE_DATABASE    = var.glue_database
+      PROCESSED_BUCKET = var.processed_bucket
     }
   }
 
@@ -274,9 +274,9 @@ resource "aws_iam_role" "catalog_updater" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -293,8 +293,8 @@ resource "aws_iam_role_policy" "catalog_updater_glue" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Action = ["glue:UpdateTable", "glue:GetTable", "glue:BatchCreatePartition"]
+      Effect   = "Allow"
+      Action   = ["glue:UpdateTable", "glue:GetTable", "glue:BatchCreatePartition"]
       Resource = "*"
     }]
   })
@@ -335,7 +335,7 @@ resource "aws_sfn_state_machine" "batch_workflow" {
         Parameters = {
           FunctionName = aws_lambda_function.historical_loader.arn
           Payload = {
-            "date.$" = "$.date"
+            "date.$"    = "$.date"
             "symbols.$" = "$.symbols"
           }
         }
@@ -352,11 +352,11 @@ resource "aws_sfn_state_machine" "batch_workflow" {
         Type     = "Task"
         Resource = "arn:aws:states:::emr-serverless:startJobRun.sync"
         Parameters = {
-          ApplicationId = var.emr_application_id
+          ApplicationId    = var.emr_application_id
           ExecutionRoleArn = var.emr_execution_role_arn
           JobDriver = {
             SparkSubmit = {
-              EntryPoint = "s3://${var.processed_bucket}/jobs/batch/reprocess_anomalies.py"
+              EntryPoint            = "s3://${var.processed_bucket}/jobs/batch/reprocess_anomalies.py"
               SparkSubmitParameters = "--conf spark.jars.packages=org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.4.2"
             }
           }
@@ -415,7 +415,7 @@ resource "aws_sfn_state_machine" "batch_workflow" {
         Type     = "Task"
         Resource = "arn:aws:states:::cloudwatch:putMetricData"
         Parameters = {
-          Namespace  = "CryptoPulse/Batch"
+          Namespace = "CryptoPulse/Batch"
           MetricData = [{
             MetricName = "BatchSuccess"
             Value      = 1
@@ -429,8 +429,8 @@ resource "aws_sfn_state_machine" "batch_workflow" {
         Type     = "Task"
         Resource = "arn:aws:states:::sns:publish"
         Parameters = {
-          TopicArn = var.sns_topic_arn
-          Subject  = "Crypto Pulse Batch Job Failed"
+          TopicArn    = var.sns_topic_arn
+          Subject     = "Crypto Pulse Batch Job Failed"
           "Message.$" = "States.Format('Batch job failed: {}', $.error)"
         }
         Next = "PublishFailureMetrics"
@@ -440,8 +440,8 @@ resource "aws_sfn_state_machine" "batch_workflow" {
         Type     = "Task"
         Resource = "arn:aws:states:::sns:publish"
         Parameters = {
-          TopicArn = var.sns_topic_arn
-          Subject  = "Crypto Pulse Quality Check Failed"
+          TopicArn    = var.sns_topic_arn
+          Subject     = "Crypto Pulse Quality Check Failed"
           "Message.$" = "States.Format('Quality check failed: {}', $.qualityResult)"
         }
         Next = "PublishFailureMetrics"
@@ -451,7 +451,7 @@ resource "aws_sfn_state_machine" "batch_workflow" {
         Type     = "Task"
         Resource = "arn:aws:states:::cloudwatch:putMetricData"
         Parameters = {
-          Namespace  = "CryptoPulse/Batch"
+          Namespace = "CryptoPulse/Batch"
           MetricData = [{
             MetricName = "BatchFailure"
             Value      = 1
@@ -507,9 +507,9 @@ resource "aws_iam_role" "eventbridge_scheduler" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "scheduler.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }

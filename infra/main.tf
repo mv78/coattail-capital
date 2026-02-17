@@ -25,17 +25,17 @@ locals {
       "MOD-007" = true # consensus
     }
     large = {
-      "MOD-001" = true  # volume-anomaly
-      "MOD-002" = true  # whale-detector
-      "MOD-003" = true  # spread-calculator
-      "MOD-004" = true  # wallet-scorer
-      "MOD-005" = true  # labeled-whales
-      "MOD-006" = true  # flow-direction
-      "MOD-007" = true  # consensus
-      "MOD-008" = true  # onchain-ingester
-      "MOD-009" = true  # dex-tracker
-      "MOD-010" = true  # predictive-scorer
-      "MOD-011" = true  # backtester
+      "MOD-001" = true # volume-anomaly
+      "MOD-002" = true # whale-detector
+      "MOD-003" = true # spread-calculator
+      "MOD-004" = true # wallet-scorer
+      "MOD-005" = true # labeled-whales
+      "MOD-006" = true # flow-direction
+      "MOD-007" = true # consensus
+      "MOD-008" = true # onchain-ingester
+      "MOD-009" = true # dex-tracker
+      "MOD-010" = true # predictive-scorer
+      "MOD-011" = true # backtester
     }
   }
 
@@ -86,17 +86,17 @@ module "glue" {
 module "iam" {
   source = "./modules/iam"
 
-  prefix                  = local.prefix
-  region                  = local.region
-  account_id              = local.account_id
-  kinesis_stream_arn      = module.kinesis.stream_arn
-  raw_bucket_arn          = module.s3_lakehouse.raw_bucket_arn
-  processed_bucket_arn    = module.s3_lakehouse.processed_bucket_arn
-  checkpoint_bucket_arn   = module.s3_lakehouse.checkpoint_bucket_arn
+  prefix                    = local.prefix
+  region                    = local.region
+  account_id                = local.account_id
+  kinesis_stream_arn        = module.kinesis.stream_arn
+  raw_bucket_arn            = module.s3_lakehouse.raw_bucket_arn
+  processed_bucket_arn      = module.s3_lakehouse.processed_bucket_arn
+  checkpoint_bucket_arn     = module.s3_lakehouse.checkpoint_bucket_arn
   athena_results_bucket_arn = module.s3_lakehouse.athena_results_bucket_arn
-  dynamodb_table_arn      = aws_dynamodb_table.alerts.arn
-  glue_database_name      = module.glue.database_name
-  emr_application_arn     = module.emr_serverless.application_arn
+  dynamodb_table_arn        = aws_dynamodb_table.alerts.arn
+  glue_database_name        = module.glue.database_name
+  emr_application_arn       = module.emr_serverless.application_arn
 }
 
 # ---------- EMR Serverless ----------
@@ -113,12 +113,12 @@ module "emr_serverless" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  prefix                     = local.prefix
-  kinesis_stream_name        = module.kinesis.stream_name
-  emr_application_id         = module.emr_serverless.application_id
-  billing_alarm_threshold    = var.billing_alarm_threshold_usd
-  alarm_email                = var.alarm_email
-  dynamodb_table_name        = aws_dynamodb_table.alerts.name
+  prefix                  = local.prefix
+  kinesis_stream_name     = module.kinesis.stream_name
+  emr_application_id      = module.emr_serverless.application_id
+  billing_alarm_threshold = var.billing_alarm_threshold_usd
+  alarm_email             = var.alarm_email
+  dynamodb_table_name     = aws_dynamodb_table.alerts.name
 }
 
 # ---------- DynamoDB Alerts Table ----------
