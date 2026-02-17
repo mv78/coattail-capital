@@ -8,15 +8,13 @@ BaseDetector and implements the standard interface for:
 3. Declaring output tables and alert types
 """
 
-import json
 from abc import ABC, abstractmethod
 from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit, struct, to_json
-from pyspark.sql.types import StringType
 
-from lineage import LineageContext, get_pipeline_version, hash_config
+from lineage import get_pipeline_version, hash_config
 
 
 class BaseDetector(ABC):

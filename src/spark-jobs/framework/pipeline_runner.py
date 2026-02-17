@@ -9,11 +9,8 @@ PipelineRunner coordinates:
 5. Routing alerts to sinks
 """
 
-from typing import Any
-
 from pyspark.sql import DataFrame, SparkSession
 
-from alert_router import AlertRouter
 from config_loader import ConfigLoader
 from module_registry import ModuleRegistry
 

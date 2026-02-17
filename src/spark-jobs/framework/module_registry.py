@@ -7,8 +7,6 @@ and instantiates the corresponding detector classes. This enables:
 - Plugin architecture (add new detectors without modifying the framework)
 """
 
-from typing import Type
-
 from base_detector import BaseDetector
 from config_loader import ConfigLoader
 
