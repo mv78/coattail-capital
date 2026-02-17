@@ -4,7 +4,7 @@
 
 > Real-time whale tracking, alpha scoring, and signal generation — built with PySpark Structured Streaming on AWS. A Principal Architect portfolio project demonstrating big data streaming, on-chain analytics, and AI-assisted development.
 
-[![CI](https://github.com/mveksler/coattail-capital/actions/workflows/ci.yml/badge.svg)](https://github.com/mveksler/coattail-capital/actions)
+[![CI](https://github.com/mv78/coattail-capital/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mv78/coattail-capital/actions)
 
 ---
 
