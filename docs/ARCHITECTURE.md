@@ -10,7 +10,7 @@
 | **Version** | 1.0 |
 | **Authors** | Mike Veksler (Principal Architect), Frank D'Avanzo (Head of Agentic AI & Strategic Fly-Bys, BMAD-Method Coach) |
 | **Source PRD** | `docs/PRD.md` v1.0 |
-| **ADRs** | `docs/ADR.md` (ADR-001 through ADR-007) |
+| **ADRs** | `docs/ADR.md` (ADR-001 through ADR-008) |
 | **Region** | us-west-2 (single region) |
 | **Environment** | dev (single account) |
 
@@ -30,7 +30,7 @@ graph LR
     end
 
     subgraph Ingestion
-        PR[Python Producer<br/>Connector Manager]
+        PR[Python Producer<br/>ECS Fargate Spot<br/>Connector Manager]
         KS[Kinesis Data Streams<br/>ON_DEMAND]
         DLQ[Kinesis DLQ<br/>Malformed Records]
     end
@@ -141,6 +141,7 @@ _Dashed lines indicate Large tier components (disabled in Small/Medium)._
 
 | Service | Role | Resource Name | ADR | Justification |
 |---|---|---|---|---|
+| **ECS Fargate (Spot)** | Connector producer compute | `{prefix}-producer` task | ADR-008 | Persistent WebSocket requires long-running process — Lambda disqualified (15-min timeout). Fargate Spot at ~$0.004/hr. Symbol partitioning via `SYMBOLS` env var for horizontal scale. |
 | **Kinesis Data Streams** | Stream ingestion | `coattail-trades` | ADR-001 | ON_DEMAND, no shard management, 10-60x cheaper than MSK at our scale |
 | **Kinesis DLQ** | Dead letter queue | `{prefix}-trades-dlq` | — | 48h retention for malformed record investigation |
 | **EMR Serverless** | Spark compute | `{prefix}-spark` (EMR 7.0) | ADR-003 | Pay-per-second, Spark 3.4, zero idle cost, full PySpark control |
@@ -253,7 +254,7 @@ Module-created tables are provisioned by the detector on first run. Disabled mod
 
 See `docs/MODULE_REGISTRY.md` for complete table specifications per module.
 
-### 3.4 DynamoDB: Alerts Table Design
+### 3.5 DynamoDB: Alerts Table Design
 
 | Attribute | Type | Role |
 |---|---|---|
@@ -363,9 +364,68 @@ Raw Record → Schema Validation → Null Checks → Range Validation → Dedupl
 
 ---
 
-## 5. Batch Architecture
+## 5. Producer Architecture — Data Ingestion
 
-### 5.1 Step Functions Workflow
+### 5.1 Deployment: ECS Fargate Spot
+
+The Kinesis producer runs as an **ECS Fargate task** (serverless container). Lambda is disqualified — the 15-minute hard timeout cannot hold persistent WebSocket connections to Binance or Coinbase (see ADR-008).
+
+| Attribute | Value |
+|---|---|
+| **Compute** | ECS Fargate Spot |
+| **Container size** | 0.25 vCPU, 0.5 GB RAM |
+| **Active cost** | ~$0.004/hr (Spot) |
+| **Idle cost** | $0.00 (stopped task) |
+| **IAM role** | `{prefix}-producer` (trusts `ecs-tasks.amazonaws.com`) |
+
+### 5.2 Async Execution Model
+
+The ConnectorManager owns the event loop. All connectors run as concurrent coroutines:
+
+```
+ECS Fargate Container
+└── asyncio.run(connector_manager.run())
+    └── asyncio.gather(
+            binance.stream(kinesis_queue),    ← coroutine, exponential backoff reconnect
+            coinbase.stream(kinesis_queue),   ← coroutine, exponential backoff reconnect
+            kinesis_writer.drain(kinesis_queue)  ← batches put_records() up to 500/call
+        )
+```
+
+Each connector's `stream()` coroutine:
+1. Opens WebSocket (Binance combined stream: `wss://stream.binance.com:9443/stream?streams=btcusdt@trade/...`)
+2. Unwraps combined stream wrapper (`msg["data"]`)
+3. Calls `normalize_with_lineage(trade_raw)` → injects correlation ID for lineage
+4. Puts enriched event onto `asyncio.Queue`
+5. On disconnect: reconnects with exponential backoff (1s → 2s → 4s → ... → 60s cap)
+
+### 5.3 Horizontal Scaling
+
+Scale the producer by running multiple ECS tasks with non-overlapping symbol subsets via the `SYMBOLS` environment variable:
+
+```
+Task A (env: SYMBOLS=btcusdt,ethusdt)  →  handles 2 symbols
+Task B (env: SYMBOLS=solusdt)          →  handles 1 symbol
+```
+
+**CRITICAL:** Symbol assignment must be non-overlapping across tasks. Duplicate symbols produce duplicate Kinesis records and duplicate alerts downstream.
+
+The full symbol list lives in SSM at `/{prefix}/features/symbols`. Task-level `SYMBOLS` env var overrides it for partitioning.
+
+### 5.4 Kinesis Write Efficiency
+
+The `kinesis_writer` component (Story 2.3) drains the shared `asyncio.Queue` and writes to Kinesis using `put_records()` (batch API):
+
+- Up to 500 records per API call
+- Partition key = `symbol` (ensures ordering per symbol within a shard)
+- ~10x cheaper per record than individual `put_record()` calls
+- Failed records in a batch are retried individually with backoff
+
+---
+
+## 6. Batch Architecture
+
+### 6.1 Step Functions Workflow
 
 ```mermaid
 graph TD
@@ -385,13 +445,13 @@ graph TD
 
 **Schedule:** Daily 02:00 UTC (disabled by default — enable for demo)
 
-### 5.2 Historical Loader
+### 6.2 Historical Loader
 
 **Purpose:** Backfill historical trade data from Binance REST API
 **API:** `GET /api/v3/aggTrades` with time range pagination (max 1000/request)
 **Output:** S3 raw zone as Parquet, partitioned by `date` and `symbol`
 
-### 5.3 Reprocessing
+### 6.3 Reprocessing
 
 **Purpose:** Recompute anomalies after algorithm changes using Iceberg time-travel
 **Input:** `raw_trades` table at specific snapshot or time range
@@ -409,7 +469,7 @@ TIMESTAMP AS OF '2025-02-01 00:00:00';
 
 ---
 
-## 6. IAM Role Inventory
+## 7. IAM Role Inventory
 
 | Role | Trust Policy | Key Permissions | Principle of Least Privilege |
 |---|---|---|---|
@@ -421,7 +481,7 @@ TIMESTAMP AS OF '2025-02-01 00:00:00';
 
 ---
 
-## 7. Network Architecture
+## 8. Network Architecture
 
 **Decision: No VPC for serverless-first design.**
 
@@ -439,9 +499,9 @@ All services are serverless and communicate via AWS service endpoints:
 
 ---
 
-## 8. Monitoring Strategy
+## 9. Monitoring Strategy
 
-### 8.1 CloudWatch Dashboard Widgets
+### 9.1 CloudWatch Dashboard Widgets
 
 | Widget | Type | Metric | Purpose |
 |---|---|---|---|
@@ -451,7 +511,7 @@ All services are serverless and communicate via AWS service endpoints:
 | Estimated Charges | Number | `EstimatedCharges` | Cost monitoring |
 | Anomaly Alerts | Custom | `CryptoPulse/Alerts` | Alert volume tracking |
 
-### 8.2 Alarms
+### 9.2 Alarms
 
 | Alarm | Threshold | Evaluation | Action |
 |---|---|---|---|
@@ -460,7 +520,7 @@ All services are serverless and communicate via AWS service endpoints:
 | DynamoDB Throttle | > 5 events | 2 of 2 periods (5 min) | SNS notification |
 | Quality Score | < 95% | 5 minutes sustained | SNS notification |
 
-### 8.3 Operational Metrics (Custom)
+### 9.3 Operational Metrics (Custom)
 
 | Metric | Namespace | Published By |
 |---|---|---|
@@ -476,9 +536,9 @@ All services are serverless and communicate via AWS service endpoints:
 
 ---
 
-## 9. API Design
+## 10. API Design
 
-### 9.1 GET /alerts
+### 10.1 GET /alerts
 
 **Query Parameters:**
 | Param | Required | Default | Description |
@@ -494,7 +554,7 @@ All services are serverless and communicate via AWS service endpoints:
 - By symbol → Query `symbol-time-index` GSI
 - By type + since → Query GSI with `detected_at > since` range condition
 
-### 9.2 GET /metrics/{symbol}
+### 10.2 GET /metrics/{symbol}
 
 **Response:** Aggregated current state for a symbol (latest volume window, latest spread, anomaly count, last whale).
 
@@ -502,11 +562,11 @@ All services are serverless and communicate via AWS service endpoints:
 
 ---
 
-## 10. Cost Architecture — Per-Tier
+## 11. Cost Architecture — Per-Tier
 
 Cost scales with the feature tier selected. Each tier adds modules and increases EMR sizing.
 
-### 10.1 Active Cost by Tier
+### 11.1 Active Cost by Tier
 
 | Tier | EMR Config | Kinesis | DDB + Lambda | Total/Hour |
 |---|---|---|---|---|
@@ -514,7 +574,7 @@ Cost scales with the feature tier selected. Each tier adds modules and increases
 | **Medium** | 6 vCPU, 12GB (7 detectors) | ~$0.63 | ~$0.07 | **~$1.40** |
 | **Large** | 8 vCPU, 16GB (11 detectors + RPC) | ~$0.63 | ~$0.07 + $0.50 RPC | **~$2.50** |
 
-### 10.2 Idle Mode (All Tiers)
+### 11.2 Idle Mode (All Tiers)
 
 | Service | Cost/Day |
 |---|---|
@@ -522,7 +582,7 @@ Cost scales with the feature tier selected. Each tier adds modules and increases
 | Everything else | $0.00 (serverless, scale-to-zero) |
 | **Total idle** | **< $0.01/day** |
 
-### 10.3 Cost Safety Controls
+### 11.3 Cost Safety Controls
 
 | Control | Mechanism | Threshold |
 |---|---|---|
@@ -537,7 +597,7 @@ Cost scales with the feature tier selected. Each tier adds modules and increases
 
 ---
 
-## 11. Schema Evolution Strategy
+## 12. Schema Evolution Strategy
 
 Iceberg supports schema evolution without table rewrites:
 
@@ -555,9 +615,9 @@ ADD COLUMN market_cap_rank INT;
 
 ---
 
-## 12. Deployment Architecture
+## 13. Deployment Architecture
 
-### 12.1 Infrastructure (Terraform)
+### 13.1 Infrastructure (Terraform)
 
 ```
 infra/
@@ -577,7 +637,7 @@ infra/
     └── lake-formation/   # Governance: permissions + LF-Tags + analyst role
 ```
 
-### 12.2 Deployment Sequence
+### 13.2 Deployment Sequence
 
 ```bash
 # 1. Bootstrap remote state
@@ -596,7 +656,7 @@ terraform output
 ./scripts/stop.sh
 ```
 
-### 12.3 CI/CD (GitHub Actions)
+### 13.3 CI/CD (GitHub Actions)
 
 | Job | Trigger | Steps |
 |---|---|---|
@@ -606,25 +666,40 @@ terraform output
 
 ---
 
-## 13. Extension Guide
+## 14. Extension Guide
 
 This section explains how to extend Coat Tail Capital with new connectors, detectors, and tiers.
 
-### 13.1 Adding a New Connector (Data Source)
+### 14.1 Adding a New Connector (Data Source)
 
 1. **Create** `src/connectors/{name}_connector.py`
-2. **Subclass** `BaseConnector`:
+2. **Subclass** `BaseConnector` and implement all required methods:
    ```python
    class KrakenConnector(BaseConnector):
-       def connect(self) -> None: ...
-       def normalize(self, raw: dict) -> TradeEvent: ...
-       def health_check(self) -> bool: ...
-       def shutdown(self) -> None: ...
+       def connect(self) -> None:
+           """Setup only — validate config, build stream URL, NO network I/O."""
+
+       def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
+           """Normalize vendor message to 8-field unified TradeEvent schema.
+           DO NOT call generate_correlation_id() here — BaseConnector.normalize_with_lineage()
+           handles lineage injection automatically after normalize() returns."""
+
+       def health_check(self) -> bool:
+           """Return True if a message was received within the last 30 seconds."""
+
+       def shutdown(self) -> None:
+           """Signal the stream() coroutine to exit cleanly."""
+
+       async def stream(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+           """Streaming coroutine. ConnectorManager calls via asyncio.gather().
+           Implements reconnection with exponential backoff (1s → 60s cap).
+           Puts normalize_with_lineage(trade_raw) results onto queue."""
    ```
 3. **Register** in `config/features.yaml` under `exchange_connectors` or `blockchain_connectors`
 4. **Update** `docs/MODULE_REGISTRY.md` if any modules depend on this connector
+5. **Note:** `connect()` is setup-only. The actual streaming runs in `stream()`. ConnectorManager (Story 2.3) owns the event loop and calls `asyncio.gather(connector.stream(queue) for connector in connectors)`.
 
-### 13.2 Adding a New Detector (Feature Module)
+### 14.2 Adding a New Detector (Feature Module)
 
 1. **Reserve** a module ID (next `MOD-XXX`) in `docs/MODULE_REGISTRY.md`
 2. **Create** `src/detectors/{name}_detector.py`
@@ -643,15 +718,15 @@ This section explains how to extend Coat Tail Capital with new connectors, detec
 5. **Add** module ID to the appropriate tier YAML in `config/tiers/`
 6. **The PipelineRunner** auto-discovers the module on next deploy
 
-### 13.3 Adding a New Tier
+### 14.3 Adding a New Tier
 
 1. **Create** `config/tiers/{tier_name}.yaml` listing active module IDs
 2. **Add** tier to `infra/variables.tf` validation list
 3. **Add** tier to `tier_modules` locals in `infra/main.tf`
 4. **Define** EMR sizing for the new tier in the `tier_emr_config` locals
-5. **Update** cost table in `docs/PRD.md` and `docs/ARCHITECTURE.md`
+5. **Update** cost table in `docs/PRD.md` and Section 11 of `docs/ARCHITECTURE.md`
 
-### 13.4 Design Principles
+### 14.4 Design Principles
 
 - **Single Spark application** — all detectors share one EMR cluster. One bill, simpler ops.
 - **YAML config over database flags** — version-controlled, reviewable in PRs.
@@ -661,9 +736,9 @@ This section explains how to extend Coat Tail Capital with new connectors, detec
 
 ---
 
-## 14. Data Lineage & Correlation ID Tracking
+## 15. Data Lineage & Correlation ID Tracking
 
-### 14.1 Data Lineage Overview
+### 15.1 Data Lineage Overview
 
 Every alert produced by Coat Tail Capital includes a `_lineage` context that traces the alert back to its source trade event. This enables:
 
@@ -672,7 +747,7 @@ Every alert produced by Coat Tail Capital includes a `_lineage` context that tra
 - **Traceability:** Correlation IDs thread from Kinesis ingestion through all detectors to final sinks
 - **Compliance:** AI Safety requirement NF6 — explicit data provenance documentation
 
-### 14.2 Lineage Data Flow
+### 15.2 Lineage Data Flow
 
 ```
 [Exchange WebSocket]
@@ -697,7 +772,7 @@ Every alert produced by Coat Tail Capital includes a `_lineage` context that tra
     ↓ details column contains _lineage as JSON, queryable via Athena
 ```
 
-### 14.3 LineageContext Schema
+### 15.3 LineageContext Schema
 
 Every alert's `details` JSON field contains a `_lineage` object with these fields:
 
@@ -712,7 +787,7 @@ Every alert's `details` JSON field contains a `_lineage` object with these field
 | `processed_at` | STRING | `2025-02-05T10:30:45.123Z` | ISO timestamp when the detector ran and generated the alert. |
 | `pipeline_version` | STRING | `a3f8c9e2b` or `dev` | Git commit SHA (in CI/CD) or "dev" (local). Allows tracing alerts to exact code version. |
 
-### 14.4 Querying Lineage in Athena
+### 15.4 Querying Lineage in Athena
 
 Example SQL queries to trace alerts by correlation_id:
 
@@ -758,7 +833,7 @@ JOIN coattail_dev_lakehouse.anomaly_alerts a
 WHERE json_extract_scalar(a.details, '$._lineage.correlation_id') = 'a3f8c9e2b1d45f67';
 ```
 
-### 14.5 DynamoDB Lineage Storage
+### 15.5 DynamoDB Lineage Storage
 
 In DynamoDB, the `_lineage` object is nested in the `details` JSON field:
 
@@ -787,7 +862,7 @@ In DynamoDB, the `_lineage` object is nested in the `details` JSON field:
 }
 ```
 
-### 14.6 Implementation Details
+### 15.6 Implementation Details
 
 **Correlation ID Generation:** Deterministic, not random
 ```python
@@ -805,7 +880,7 @@ If you re-run detection with the same config_hash, you'll get identical results.
 
 **Framework Integration:** All lineage injection happens in base classes (`BaseConnector`, `BaseDetector`, `AlertRouter`), not in individual detectors. Detectors inherit lineage for free.
 
-### 14.7 Lineage Verification (Unit Tests)
+### 15.7 Lineage Verification (Unit Tests)
 
 Example test to verify lineage is wired end-to-end:
 

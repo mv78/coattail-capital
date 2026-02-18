@@ -369,3 +369,88 @@ Replace the phase-based scope with a **Module-Tier System**:
 - Framework classes are minimal (< 50 lines each for base classes)
 - Small tier works identically to the original 3-job design — the framework is transparent
 - MODULE_REGISTRY.md serves as both spec and documentation, not extra overhead
+
+---
+
+## ADR-008: Producer Compute — ECS Fargate vs Lambda vs EC2
+
+**Status:** Accepted
+**Date:** 2026-02-18
+**Deciders:** Mike Veksler
+
+### Context
+
+The Kinesis producer connects to exchange WebSocket feeds (Binance, Coinbase) and writes normalized trade events to Kinesis. This is a **persistent, long-running process** — WebSocket connections must be maintained continuously while streaming is active. We need to choose a compute platform that supports this workload within our serverless-first, cost-optimized constraints.
+
+### Options Considered
+
+| Criteria | AWS Lambda | ECS Fargate | EC2 (spot) |
+|---|---|---|---|
+| **Max runtime** | 15 minutes (hard limit) | Unlimited | Unlimited |
+| **WebSocket support** | No — timeout kills connection | Yes | Yes |
+| **Idle cost** | ~$0 | ~$0 (stopped task) | Minimum instance cost |
+| **Active cost** | N/A (disqualified) | ~$0.004/hr (Spot, 0.25vCPU/0.5GB) | ~$0.005/hr (t3.nano Spot) |
+| **Serverless** | Yes | Yes (Fargate = serverless containers) | No |
+| **Horizontal scale** | N/A | ECS Service scaling + env var symbol partitioning | Manual |
+| **Operational overhead** | None | Low (ECS task definition) | High (AMI, patching) |
+| **IAM integration** | Native task role | Native task role (ecs-tasks.amazonaws.com) | Instance profile |
+
+### Decision
+
+**ECS Fargate with Fargate Spot capacity, using environment variable-based symbol partitioning for horizontal scale.**
+
+### Rationale
+
+1. **Lambda is disqualified.** The 15-minute hard timeout cannot hold a persistent Binance or Coinbase WebSocket connection. The producer must stream continuously for hours or days. Lambda is architecturally incompatible with this requirement.
+
+2. **ECS Fargate is serverless containers.** There are no servers to manage. The IAM producer role already trusts `ecs-tasks.amazonaws.com` (`infra/modules/iam/main.tf`). No infrastructure changes needed.
+
+3. **Fargate Spot reduces cost ~70%.** At 0.25 vCPU / 0.5 GB, the producer costs ~$0.004/hr on Spot vs ~$0.012/hr on-demand. The reconnection logic built into each connector handles graceful Spot reclamation — the WebSocket reconnects with exponential backoff within seconds.
+
+4. **Horizontal scaling via symbol partitioning.** Each Fargate task is assigned a non-overlapping symbol subset via the `SYMBOLS` environment variable (e.g., Task A: `btcusdt,ethusdt`, Task B: `solusdt`). This allows independent scaling without duplicating data in Kinesis. The full symbol list is stored in SSM (`/{prefix}/features/symbols`); per-task overrides are set in the ECS task environment.
+
+5. **Async-native connector design.** The `BinanceConnector` and `CoinbaseConnector` expose an `async stream(queue)` coroutine. The ConnectorManager (Story 2.3) owns the event loop and runs all connectors concurrently via `asyncio.gather()`. This eliminates thread overhead and is idiomatic for I/O-bound streaming workloads.
+
+### Connector Interface (Updated)
+
+```python
+class BaseConnector(ABC):
+    def connect(self) -> None: ...         # Setup only — validate config, build URLs, no I/O
+    def normalize(self, raw: dict) -> dict: ... # Normalize vendor format → unified schema
+    def health_check(self) -> bool: ...    # True if message received within last 30s
+    def shutdown(self) -> None: ...        # Signal stream() to exit
+
+    # Implemented by each connector subclass:
+    async def stream(self, queue: asyncio.Queue) -> None: ...  # Streaming coroutine with reconnect loop
+```
+
+### ConnectorManager Execution Model
+
+```python
+# ECS Fargate container entry point (Story 2.3)
+async def main():
+    queue = asyncio.Queue()
+    await asyncio.gather(
+        binance.stream(queue),
+        coinbase.stream(queue),
+        kinesis_writer.drain(queue),   # batches put_records() up to 500/call
+    )
+
+asyncio.run(main())
+```
+
+### Consequences
+
+**Positive:**
+- True serverless — no EC2 instances to manage or patch
+- Fargate Spot keeps producer cost negligible (~$0.004/hr)
+- Symbol partitioning enables horizontal scale without architecture changes
+- Async coroutine model is memory-efficient and CI-friendly (deterministic tests with `pytest-asyncio`)
+- Reconnection logic handles Spot reclamation transparently
+
+**Negative:**
+- ECS task definition Terraform must be added in Story 2.3 (not provisioned yet)
+- Fargate Spot reclamation causes 30-60s reconnect gap — acceptable for trade data (Kinesis buffers)
+- Symbol partitioning requires operational discipline to keep assignments non-overlapping
+
+**Production Recommendation:** For high-availability production deployments, run a mix of Fargate on-demand (one task per exchange for reliability) and Fargate Spot (additional symbol-partitioned tasks for scale). Use ECS Service with desired count 2+ for automatic task replacement on Spot reclamation.

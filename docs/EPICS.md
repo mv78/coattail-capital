@@ -17,7 +17,7 @@
 ## Epic 1: Plugin Framework
 
 **PRD Goals:** P1 (PySpark mastery), P2 (architecture demonstration)
-**Design Principle:** Framework first, then modules (ARCHITECTURE.md Section 13.4)
+**Design Principle:** Framework first, then modules (ARCHITECTURE.md Section 14.4)
 
 | Story | Description | Acceptance Criteria | Agent | Est. |
 |---|---|---|---|---|
