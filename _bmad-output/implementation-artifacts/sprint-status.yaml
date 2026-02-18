@@ -51,11 +51,11 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Data Ingestion (Connectors) — ACTIVE SPRINT
-  epic-2: in-progress
+  epic-2: done
   2-1-build-binanceconnector: done
   2-2-build-coinbaseconnector: done
-  2-3-build-connectormanager-producer: backlog
-  epic-2-retrospective: optional
+  2-3-build-connectormanager-producer: done
+  epic-2-retrospective: done
 
   # Epic 3: Small Tier Detectors
   epic-3: backlog
