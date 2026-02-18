@@ -13,13 +13,10 @@ Tests cover:
 - shutdown(): sets stop event
 """
 
-import asyncio
 import json
 import sys
 import os
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src/producer"))
 
@@ -49,15 +46,6 @@ SAMPLE_EVENTS = [
         "correlation_id": "b4g9d0f3c2e56g78",
     },
 ]
-
-
-def make_writer() -> "KinesisWriter":
-    """Create a KinesisWriter with mocked boto3 clients."""
-    with patch("boto3.client") as mock_client:
-        mock_client.return_value = MagicMock()
-        from kinesis_writer import KinesisWriter
-        writer = KinesisWriter(stream_name="test-stream", region="us-east-1")
-    return writer
 
 
 class TestSendBatch:
