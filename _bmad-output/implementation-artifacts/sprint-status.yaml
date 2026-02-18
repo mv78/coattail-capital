@@ -52,7 +52,7 @@ development_status:
 
   # Epic 2: Data Ingestion (Connectors) — ACTIVE SPRINT
   epic-2: in-progress
-  2-1-build-binanceconnector: ready-for-dev
+  2-1-build-binanceconnector: done
   2-2-build-coinbaseconnector: ready-for-dev
   2-3-build-connectormanager-producer: backlog
   epic-2-retrospective: optional
