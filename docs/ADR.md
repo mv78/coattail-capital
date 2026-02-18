@@ -454,3 +454,84 @@ asyncio.run(main())
 - Symbol partitioning requires operational discipline to keep assignments non-overlapping
 
 **Production Recommendation:** For high-availability production deployments, run a mix of Fargate on-demand (one task per exchange for reliability) and Fargate Spot (additional symbol-partitioned tasks for scale). Use ECS Service with desired count 2+ for automatic task replacement on Spot reclamation.
+
+---
+
+## ADR-009: Observability — Data Lineage vs Distributed Tracing
+
+**Status:** Accepted
+**Date:** 2026-02-18
+**Deciders:** Mike Veksler
+
+### Context
+
+The platform ingests ~20–50 trade events per second across Binance and Coinbase, routes them through Kinesis → EMR Spark → DynamoDB/Iceberg, and exposes them via a Lambda API. Observability requires the ability to answer:
+
+1. **Data provenance:** Which raw trade event triggered a given alert?
+2. **Debugging:** Why did a specific alert fire? With what configuration?
+3. **Operational health:** Are records flowing? Are there failures?
+
+Two approaches exist for tracing requests through a distributed system: **data lineage via correlation IDs** (business-level traceability) and **distributed tracing** (instrumentation-level traceability, e.g. AWS X-Ray, OpenTelemetry).
+
+### Options Considered
+
+| Criteria | Data Lineage (correlation IDs) | AWS X-Ray (sampled) | AWS X-Ray (full) | OpenTelemetry (self-hosted) |
+|---|---|---|---|---|
+| **Answers "which trade → which alert"** | ✅ Yes (primary use case) | ⚠️ Partial (trace IDs don't map to business events) | ⚠️ Partial | ⚠️ Partial |
+| **Works through Kinesis** | ✅ ID in payload | ❌ No native Kinesis span propagation | ❌ | ❌ |
+| **Works through Spark** | ✅ ID as DataFrame column | ❌ EMR X-Ray support is limited | ❌ | ❌ |
+| **Per-record cost at 30 rec/s** | $0 (stored in existing field) | ~$5/month at 1% sampling | ~$390/month at 100% | ~$20–50/month (backend infra) |
+| **Implementation complexity** | Low (already implemented, NF6) | Medium (daemon sidecars, SDK) | High | High |
+| **Storage overhead** | Zero (reuses `details` JSON field) | X-Ray trace storage (included in price) | Same | Own S3/disk |
+| **API latency tracing** | ❌ Not applicable | ✅ Lambda integration native | ✅ | ✅ |
+| **Added monthly cost** | $0 | ~$1.50–5/month | ~$390/month | ~$20–50/month |
+
+### Decision
+
+**Data lineage via deterministic correlation IDs (already implemented as NF6). Distributed tracing deferred.**
+
+AWS X-Ray is noted as a production recommendation for the Lambda API layer only, where it is native, free-tier eligible, and adds genuine value for latency debugging.
+
+### Rationale
+
+1. **Streaming pipelines are the wrong unit for distributed tracing.** X-Ray and OpenTelemetry are designed for request/response flows — a single user request that passes through multiple services synchronously. Our pipeline is a continuous stream: there is no "request" that corresponds to a single trade record. Tracing every record end-to-end would require propagating trace context through Kinesis record headers (not natively supported) and through Spark DataFrames (impractical at batch level).
+
+2. **Correlation IDs answer the actual business questions.** The NF6 `correlation_id` = `sha256(exchange + symbol + timestamp)[:16]` threads deterministically through every stage: connector → Kinesis payload → Spark column → `details._lineage` JSON in DynamoDB and Iceberg. Any alert is traceable to its source trade event in a single Athena query (see ARCHITECTURE.md Section 15.4). This is the primary observability need for this system.
+
+3. **Full tracing is cost-prohibitive at streaming volume.** At ~30 records/second, full X-Ray tracing would generate ~78M traces/month at ~$390/month — nearly 100x the entire platform's running cost. Even at 1% sampling, X-Ray adds ~$5/month for minimal signal (sampled traces miss most real events in a streaming context).
+
+4. **Kinesis and EMR Serverless have limited X-Ray support.** AWS X-Ray has no native span propagation through Kinesis records. EMR Serverless X-Ray integration is experimental and not production-ready as of 2026. The two highest-value instrumentation points are the least supported.
+
+5. **CloudWatch already covers operational health.** Existing alarms cover Kinesis iterator age (consumer lag), DynamoDB throttles, and quality score. The `KinesisWriter` publishes `RecordsSent`/`RecordsFailed` metrics to `CoatTail/Producer`. These answer "is the pipeline healthy?" without per-record tracing.
+
+### Cost Comparison Summary
+
+| Approach | Monthly Added Cost | Value for This System |
+|---|---|---|
+| Correlation IDs (implemented) | $0 | High — full business-level traceability |
+| X-Ray error-only (Lambda API only) | ~$0 (free tier) | Medium — API latency debugging |
+| X-Ray 1% sampled (all services) | ~$5 | Low — sparse coverage, misses streaming patterns |
+| X-Ray 100% (all services) | ~$390 | Not viable |
+| OpenTelemetry self-hosted | ~$20–50 | Low for this scale |
+
+### Consequences
+
+**Positive:**
+- Zero additional cost — correlation IDs stored in the existing `details` JSON field
+- Full business-level traceability already implemented and tested (11 unit tests in `tests/unit/framework/test_lineage.py`)
+- No instrumentation SDK dependencies, no sidecar processes, no sampling configuration
+- Works natively through Kinesis (ID in payload) and Spark (ID as DataFrame column)
+
+**Negative:**
+- No wall-clock latency breakdown per service hop (e.g., "Kinesis→Spark transit time")
+- No automatic service dependency map (X-Ray provides this visually)
+- API latency outliers require manual CloudWatch log correlation rather than trace waterfall view
+
+### Production Recommendation
+
+For enterprise deployments, layer distributed tracing on top of — not instead of — correlation IDs:
+
+1. **Lambda API handlers:** Enable X-Ray active tracing (one checkbox in Terraform, free-tier eligible at demo volume). Provides latency waterfall for API calls with zero streaming cost impact.
+2. **ECS Fargate producer:** Add X-Ray daemon sidecar at error-only sampling (~$1.50/month). Captures WebSocket reconnect failures and Kinesis write errors with full context.
+3. **W3C `traceparent` in Kinesis payloads:** Propagate a standard trace context header alongside `correlation_id` for systems that need both business and instrumentation traceability.
+4. **Keep correlation IDs.** Distributed tracing does not replace data lineage for a streaming system. Both are needed.

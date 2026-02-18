@@ -10,7 +10,7 @@
 | **Version** | 1.0 |
 | **Authors** | Mike Veksler (Principal Architect), Frank D'Avanzo (Head of Agentic AI & Strategic Fly-Bys, BMAD-Method Coach) |
 | **Source PRD** | `docs/PRD.md` v1.0 |
-| **ADRs** | `docs/ADR.md` (ADR-001 through ADR-008) |
+| **ADRs** | `docs/ADR.md` (ADR-001 through ADR-009) |
 | **Region** | us-west-2 (single region) |
 | **Environment** | dev (single account) |
 
