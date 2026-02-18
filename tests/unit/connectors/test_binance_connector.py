@@ -17,7 +17,6 @@ Tests cover:
 
 import sys
 import os
-import asyncio
 
 import pytest
 
@@ -157,10 +156,8 @@ class TestSymbolNormalization:
         assert connector._symbol_map["ETHBTC"] == "ETH-BTC"
 
     def test_eth_quote_pair(self) -> None:
-        connector = BinanceConnector("binance", ["solusdt"])
-        # ETH-quoted pairs
-        connector2 = BinanceConnector("binance", ["soleth"])
-        assert connector2._symbol_map["SOLETH"] == "SOL-ETH"
+        connector = BinanceConnector("binance", ["soleth"])
+        assert connector._symbol_map["SOLETH"] == "SOL-ETH"
 
     def test_unknown_pair_falls_back(self) -> None:
         connector = BinanceConnector("binance", ["xrpbnb"])
